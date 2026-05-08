@@ -46,8 +46,9 @@ ___SMIP_SAAS_SIDE___/   reference material + SMIP-side libraries
   SMIP JS SDK/            generic, tenant-agnostic JS SDK — grown in this
                           repo. apiDemoMethods + apiDemoTools wrappers
                           around generic SMIP mutations/queries
-                          (updateAttribute, createAttribute, updateObject,
-                          getTypes). The home for new generic SMIP plumbing.
+                          (updateAttribute, updateObject, getTypes,
+                          getObject, getEnumTypes). The home for new
+                          generic SMIP plumbing.
   JS SDK Template/        domain/tenant-specific JS SDK — vendored snapshot
                           of DevCon-SMIP Topic 06 / Take 4. Per-project
                           methods live here (and merge additively into the
@@ -171,8 +172,8 @@ The split mirrors the Python side:
 
 - `SMIP JS SDK/` is the JS analogue of the generic helpers on `SMIPClient`
   and `SMIPMethods` (low-level GraphQL wrappers like `updateAttribute`,
-  `createAttribute`, `updateObject`, `getTypes`) — things that are useful
-  on every tenant, regardless of the model.
+  `updateObject`, `getTypes`, `getObject`, `getEnumTypes`) — things that
+  are useful on every tenant, regardless of the model.
 - `JS SDK Template/` is the JS analogue of project-specific methods on
   `SMIPMethods` (`get_libraries`, `get_quantities_with_units`, …) — built
   for a particular tenant's vocabulary.
@@ -267,8 +268,8 @@ Upstream repo: <https://github.com/gregorvilkner/DevCon-SMIP---How-to-Code-on-Th
     │                               #   (type libraries / script libraries used as LLM context)
     ├── SMIP JS SDK/                #   GENERIC, tenant-agnostic JS SDK — grown in this repo
     │                               #   apiDemoMethods + apiDemoTools wrappers around generic
-    │                               #   SMIP mutations/queries (updateAttribute, createAttribute,
-    │                               #   updateObject, getTypes). Edit here directly.
+    │                               #   SMIP mutations/queries (updateAttribute, updateObject,
+    │                               #   getTypes, getObject, getEnumTypes). Edit here directly.
     ├── JS SDK Template/            #   DOMAIN/TENANT-SPECIFIC JS SDK
     │                               #   vendored snapshot of DevCon-SMIP Topic 06 / Take 4
     │                               #   (https://github.com/gregorvilkner/DevCon-SMIP---How-to-Code-on-ThinkIQ)

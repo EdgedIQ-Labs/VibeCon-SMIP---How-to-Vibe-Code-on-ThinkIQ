@@ -6,15 +6,22 @@
 // What this library carries:
 //   • apiDemoMethods._buildPatchLiteral(patch)            — patch builder
 //   • apiDemoMethods.updateAttribute({ attributeId, patch }) — generic mutation
-//   • apiDemoMethods.createAttribute({ ownerId, attributeTypeDisplayName }) — generic mutation
 //   • apiDemoMethods.updateObject({ id, patch })         — generic mutation
 //   • apiDemoMethods.getTypes(args)                       — generic tiqTypes query
 //   • apiDemoMethods.getObject(args)                      — generic single-object fetch
+//   • apiDemoMethods.getEnumTypes(args)                   — enumerationTypes + zipped value objects
 //
 // Plus matching apiDemoTools descriptors so the doc page renders an
 // interactive form for each one. The mutation forms are dangerous —
 // a wrong attribute id and a `null` patch silently clears that
 // column; treat the doc page as a developer-only debug surface.
+//
+// IDs are BigInt on the server. PostGraphile / GraphQL encode BigInt as
+// quoted JSON strings to dodge JavaScript's Number 2^53 cliff. Every id
+// field in this SDK — node ids, attributeId, referencedNodeId, intValue —
+// is a digits-only string both inbound (callers must pass strings) and
+// outbound (responses come back as strings). The /^\d+$/ guards on the
+// handlers enforce this on the way in.
 //
 // Tenant-specific libraries include this SDK first, then add their own
 // descriptors and handler methods on top of the same `apiDemoTools` /
@@ -75,30 +82,6 @@ apiDemoTools.push(
             { key: "patch", argName: "patch", label: "Patch (JSON object): ", type: "text",
               default: '{"floatValue": 0}',
               parse: "json", showJsonPreview: true }
-        ],
-        output: { kind: "single" }
-    },
-
-    //
-    // Mutation — CreateAttribute. Creates a fresh attribute on an
-    // existing owner object by attribute-type displayName. Used when
-    // an attribute slot hasn't been auto-instantiated yet on a fresh
-    // object.
-    //
-    {
-        key:         "createAttributeViaJs",
-        name:        "CreateAttributeViaJs",
-        category:    "Mutation (JS)",
-        description: "Create a new attribute on an owner object by attribute-type displayName. Returns the freshly-created { id, displayName }. Useful when an attribute slot hasn't been auto-instantiated on a freshly-created instance — call this first, then call UpdateAttribute on the returned id. ownerId is a digits-only object node id; attributeTypeDisplayName is the exact displayName of the attribute type to instantiate (matched against the type's typeToAttributeTypes).",
-        via:         "js",
-        handler:     "createAttribute",
-        inputs: [
-            { key: "ownerId", argName: "ownerId", label: "Owner id (digits): ", type: "text",
-              default: '',
-              parse: "raw" },
-            { key: "attributeTypeDisplayName", argName: "attributeTypeDisplayName", label: "Attribute type displayName: ", type: "text",
-              default: '',
-              parse: "raw" }
         ],
         output: { kind: "single" }
     },
@@ -181,17 +164,19 @@ apiDemoTools.push(
     // related-data subselections. The everyday workhorse for type-bound
     // display scripts that need to load their own instance — pass
     // context.std_inputs.node_id and pick which slices of the graph
-    // come along: attributes (default ON, all five value-variant
-    // columns + relativeName), parent (partOf), children
-    // (childObjects), and type (a small {id displayName relativeName}
-    // pointer). Mirrors the Python pattern of "get this object plus
-    // a couple of related rows in one round-trip".
+    // come along: attributes (default ON, all ten ScalarTypeEnum value
+    // variants + dataType + dataSource + importance + relativeName),
+    // parent (partOf), children (childObjects, optionally with their
+    // own attributes folded in), and type (a small
+    // {id displayName relativeName} pointer). Mirrors the Python
+    // pattern of "get this object plus a couple of related rows in
+    // one round-trip".
     //
     {
         key:         "getObjectViaJs",
         name:        "GetObjectViaJs",
         category:    "Query (JS)",
-        description: "Fetch a single object by id with optional related-data subselections. nodeId is a digits-only SMIP object node id (REQUIRED). The 4 toggles control what comes back alongside the object's identity fields. includeAttributes (default ON) returns ALL TEN attribute value-variants — boolValue (BOOL) / intValue (INT) / floatValue (FLOAT) / stringValue (STRING) / datetimeValue (DATETIME) / intervalValue (INTERVAL — { seconds, minutes, hours, days, months, years }) / objectValue (OBJECT) / enumerationValue (ENUMERATION) / geopointValue (GEOPOINT) / referencedNodeId (REFERENCE) — plus the attribute's dataType (ScalarTypeEnum), enumerationName for human-readable enum labels, and relativeName. The caller routes on attribute.dataType to pick the matching value field without a second query. includePartOf adds the parent object (id / displayName / typeId / typeName). includeChildObjects adds direct children. includeType adds a small type pointer. Returns the object dict with whatever subselections are turned on, or null if no object with that id was found. Use this in any type-bound display script that needs to load its own node.",
+        description: "Fetch a single object by id with optional related-data subselections. nodeId is a digits-only SMIP object node id (REQUIRED). The 5 toggles control what comes back alongside the object's identity fields (id, displayName, relativeName, description, typeId, typeName, partOfId, importance). includeAttributes (default ON) returns ALL TEN attribute value-variants — boolValue (BOOL) / intValue (INT) / floatValue (FLOAT) / stringValue (STRING) / datetimeValue (DATETIME) / intervalValue (INTERVAL — { seconds, minutes, hours, days, months, years }) / objectValue (OBJECT) / enumerationValue (ENUMERATION) / geopointValue (GEOPOINT) / referencedNodeId (REFERENCE) — plus the attribute's dataType (ScalarTypeEnum), dataSource, importance, enumerationName for human-readable enum labels, and relativeName. The caller routes on attribute.dataType to pick the matching value field without a second query. includePartOf adds the parent object (id / displayName / relativeName / typeId / typeName). includeChildObjects adds direct children (id / displayName / relativeName / description / typeId / typeName / importance). includeChildAttributes folds the same attributes fragment into each child — only effective when includeChildObjects is also on. includeType adds a small type pointer. Returns the object dict with whatever subselections are turned on, or null if no object with that id was found. Use this in any type-bound display script that needs to load its own node.",
         via:         "js",
         handler:     "getObject",
         inputs: [
@@ -204,19 +189,48 @@ apiDemoTools.push(
               default: false },
             { key: "includeChildObjects", argName: "includeChildObjects", label: "Include childObjects? ", type: "checkbox",
               default: false },
+            { key: "includeChildAttributes", argName: "includeChildAttributes", label: "Include children's attributes? ", type: "checkbox",
+              default: false },
             { key: "includeType", argName: "includeType", label: "Include type pointer? ", type: "checkbox",
               default: false }
         ],
         output: { kind: "single" }
+    },
+
+    //
+    // Query — GetEnumTypes. List enumerationTypes (optionally filtered by
+    // displayName substring) and zip the four parallel arrays the SMIP
+    // stores (enumerationNames / defaultEnumerationValues /
+    // enumerationColorCodes / enumerationDescriptions) into a single
+    // `enumerationTypeObjects` array of {name, value, color, description}
+    // objects. The flat arrays stay on the row for callers that need
+    // positional access; the zipped objects are the friendlier shape for
+    // rendering / lookup.
+    //
+    {
+        key:         "getEnumTypesViaJs",
+        name:        "GetEnumTypesViaJs",
+        category:    "Query (JS)",
+        description: "List enumerationTypes with optional displayName filter and an optional zip step. displayNameSearch filters by case-insensitive substring; empty returns every enumeration type. When includeValues is on (default), each result row gets an extra `enumerationTypeObjects` array of { name, value, color, description } objects, assembled by zipping the four parallel arrays the SMIP stores (enumerationNames / defaultEnumerationValues / enumerationColorCodes / enumerationDescriptions). The flat arrays stay on the row for positional access. Returns the raw enumerationTypes array.",
+        via:         "js",
+        handler:     "getEnumTypes",
+        inputs: [
+            { key: "displayNameSearch", argName: "displayNameSearch", label: "Enum type name search (substring, optional): ", type: "text",
+              default: '',
+              parse: "raw" },
+            { key: "includeValues", argName: "includeValues", label: "Include zipped enumerationTypeObjects? ", type: "checkbox",
+              default: true }
+        ],
+        output: { kind: "array" }
     }
 
 );
 
 
 // =====================================================================
-// apiDemoMethods — the four mutation helpers (always direct-callable,
-// also handlers for the three Mutation descriptors above) plus the
-// getTypes and getObject query handlers.
+// apiDemoMethods — the two mutation helpers (always direct-callable,
+// also handlers for the two Mutation descriptors above) plus the
+// getTypes / getObject / getEnumTypes query handlers.
 // =====================================================================
 
 Object.assign(apiDemoMethods, {
@@ -314,43 +328,6 @@ Object.assign(apiDemoMethods, {
         return await tiqJSHelper.invokeGraphQLAsync(mutation);
     },
 
-    // Create a new attribute on an owner object by attribute-type
-    // displayName. Used by display scripts when an attribute slot
-    // hasn't been auto-instantiated yet (e.g., a fresh object that
-    // doesn't have a particular attribute on it yet).
-    //
-    // Args shape:
-    //   { ownerId, attributeTypeDisplayName }
-    //     ownerId                  — digits-only object node id (REQUIRED).
-    //     attributeTypeDisplayName — exact displayName of the attribute
-    //                                type to instantiate (REQUIRED).
-    //
-    // Returns the freshly-created `{ id, displayName }` attribute dict.
-    createAttribute: async function(args){
-        const ownerId = String((args && args.ownerId) || '').trim();
-        const name    = String((args && args.attributeTypeDisplayName) || '').trim();
-        if (!ownerId || !/^\d+$/.test(ownerId)) {
-            throw new Error('createAttribute: ownerId must be digits-only; got ' + JSON.stringify(ownerId));
-        }
-        if (!name) {
-            throw new Error('createAttribute: attributeTypeDisplayName is required');
-        }
-        const mutation = `
-            mutation CreateAttribute {
-              createAttribute(input: {
-                attribute: {
-                  ownerId: "${ownerId}",
-                  attributeTypeDisplayName: ${JSON.stringify(name)}
-                }
-              }) {
-                attribute { id displayName }
-              }
-            }
-        `;
-        const resp = await tiqJSHelper.invokeGraphQLAsync(mutation);
-        return resp && resp.data && resp.data.createAttribute && resp.data.createAttribute.attribute || null;
-    },
-
     // Update an object's properties (importance, displayName, description, …).
     //
     // Args shape:
@@ -397,8 +374,8 @@ Object.assign(apiDemoMethods, {
     //   {
     //     typeNameSearch:            String — case-insensitive substring on tiqType.displayName
     //                                         (PostGraphile `includesInsensitive`). Empty = all types.
-    //     includeTypeAttributes:     Boolean — add `typeToAttributeTypes { id displayName dataType importance }`.
-    //     includeInstances:          Boolean — add `objectsByTypeId(filter: ...) { id displayName description }`.
+    //     includeTypeAttributes:     Boolean — add `typeToAttributeTypes { id displayName relativeName dataType sourceCategory importance }`.
+    //     includeInstances:          Boolean — add `objectsByTypeId(filter: ...) { id displayName relativeName description typeId typeName }`.
     //     instanceNameSearch:        String — case-insensitive substring on instance.displayName,
     //                                         only used when includeInstances is true.
     //     includeInstanceAttributes: Boolean — add `attributes { ... }` to each instance,
@@ -441,7 +418,7 @@ Object.assign(apiDemoMethods, {
         // the rendered query stays as small as the caller asked for.
         const typeAttrSel = includeTypeAttributes
             ? `typeToAttributeTypes {
-                    id displayName dataType sourceCategory importance
+                    id displayName relativeName dataType sourceCategory importance
                   }`
             : '';
 
@@ -452,7 +429,7 @@ Object.assign(apiDemoMethods, {
         // the dataType → field mapping.
         const instAttrSel = includeInstanceAttributes
             ? `attributes {
-                        id displayName relativeName dataType dataSource
+                        id displayName relativeName dataType dataSource importance
                         boolValue intValue floatValue stringValue
                         datetimeValue
                         intervalValue { seconds minutes hours days months years }
@@ -464,7 +441,7 @@ Object.assign(apiDemoMethods, {
 
         const instSel = includeInstances
             ? `objectsByTypeId${instFilter} {
-                    id displayName description
+                    id displayName relativeName description typeId typeName
                     ${instAttrSel}
                   }`
             : '';
@@ -482,7 +459,7 @@ Object.assign(apiDemoMethods, {
         // best-effort — if the schema exposes more fields (multiplicity,
         // equipmentType, etc.) extend the selection here.
         const compositionSel = includeComposition
-            ? `childEquipment { id displayName }`
+            ? `childEquipment { id displayName relativeName }`
             : '';
 
         const query = `
@@ -561,11 +538,12 @@ Object.assign(apiDemoMethods, {
     // use a tenant-specific SDK method on top of this generic fetch.
     getObject: async function(args){
         args = args || {};
-        const nodeId              = String(args.nodeId || '').trim();
-        const includeAttributes   = (args.includeAttributes !== false);  // default TRUE
-        const includePartOf       = !!args.includePartOf;
-        const includeChildObjects = !!args.includeChildObjects;
-        const includeType         = !!args.includeType;
+        const nodeId                = String(args.nodeId || '').trim();
+        const includeAttributes     = (args.includeAttributes !== false);  // default TRUE
+        const includePartOf         = !!args.includePartOf;
+        const includeChildObjects   = !!args.includeChildObjects;
+        const includeChildAttributes= !!args.includeChildAttributes;
+        const includeType           = !!args.includeType;
 
         if (!nodeId || !/^\d+$/.test(nodeId)) {
             throw new Error('getObject: nodeId must be digits-only; got ' + JSON.stringify(nodeId));
@@ -587,7 +565,7 @@ Object.assign(apiDemoMethods, {
         // for human-readable rendering of ENUMERATION attributes.
         const attrsSel = includeAttributes
             ? `attributes {
-                    id displayName relativeName dataType dataSource
+                    id displayName relativeName dataType dataSource importance
                     boolValue intValue floatValue stringValue
                     datetimeValue
                     intervalValue { seconds minutes hours days months years }
@@ -598,11 +576,32 @@ Object.assign(apiDemoMethods, {
             : '';
 
         const partOfSel = includePartOf
-            ? `partOf { id displayName typeId typeName }`
+            ? `partOf { id displayName relativeName typeId typeName }`
             : '';
 
+        // The children's-own-attributes fragment is the same shape as the
+        // parent's `attributes` block above. Folded inside `childObjects`
+        // when both toggles are on, so the caller gets one round-trip
+        // for "give me this object, its kids, and the kids' attribute
+        // values" — which is the shape display scripts attached to a
+        // parent type (e.g. a Busbar showing its Busplugs in a table)
+        // tend to need.
+        const childAttrsSel = (includeChildObjects && includeChildAttributes)
+            ? `attributes {
+                    id displayName relativeName dataType dataSource importance
+                    boolValue intValue floatValue stringValue
+                    datetimeValue
+                    intervalValue { seconds minutes hours days months years }
+                    objectValue
+                    enumerationValue enumerationName
+                    geopointValue referencedNodeId
+                  }`
+            : '';
         const childrenSel = includeChildObjects
-            ? `childObjects { id displayName description typeId typeName }`
+            ? `childObjects {
+                    id displayName relativeName description typeId typeName importance
+                    ${childAttrsSel}
+                  }`
             : '';
 
         const typeSel = includeType
@@ -612,7 +611,7 @@ Object.assign(apiDemoMethods, {
         const query = `
             query GetObject {
               object(id: "${nodeId}") {
-                id displayName description typeId typeName partOfId importance
+                id displayName relativeName description typeId typeName partOfId importance
                 ${typeSel}
                 ${attrsSel}
                 ${partOfSel}
@@ -623,6 +622,85 @@ Object.assign(apiDemoMethods, {
 
         const resp = await tiqJSHelper.invokeGraphQLAsync(query);
         return (resp && resp.data && resp.data.object) || null;
+    },
+
+    // Query — list enumerationTypes with optional substring filter on
+    // displayName, and (by default) zip the four parallel arrays the
+    // SMIP stores into one `enumerationTypeObjects` array of friendly
+    // { name, value, color, description } objects per row. SMIP stores
+    // each enum's four facets as four positionally-aligned arrays:
+    //
+    //   enumerationNames         = ["Alarm",   "Warning", "Info"]
+    //   defaultEnumerationValues = ["1",       "2",       "3"]
+    //   enumerationColorCodes    = ["#ff0000", "#ff8800", "#00aaff"]
+    //   enumerationDescriptions  = ["Critical", "Warning", "Informational"]
+    //
+    // At index i, all four refer to the same enum value. The zip walks
+    // i across the longest of the four and emits one object per slot.
+    // If the SMIP has a sparse facet (e.g. no descriptions set yet)
+    // the missing fields come back as null rather than undefined so
+    // callers can do `if (obj.color)` without a typeof guard.
+    //
+    // Args shape (all optional):
+    //   {
+    //     displayNameSearch: String — case-insensitive substring on
+    //                                 enumerationType.displayName. Empty = all.
+    //     includeValues:     Boolean — default TRUE. When on, append
+    //                                 enumerationTypeObjects to each row.
+    //   }
+    //
+    // Returns the raw `enumerationTypes` array. Each entry is
+    // `{ id, displayName, relativeName, enumerationNames,
+    //    defaultEnumerationValues, enumerationColorCodes,
+    //    enumerationDescriptions }` plus, when includeValues is on,
+    // `enumerationTypeObjects: [{ name, value, color, description }, ...]`.
+    getEnumTypes: async function(args){
+        args = args || {};
+        const displayNameSearch = String(args.displayNameSearch || '').trim();
+        const includeValues     = (args.includeValues !== false);  // default TRUE
+
+        // Same conditional-filter pattern as getTypes — omit the (filter:)
+        // clause entirely when the search string is empty so the rendered
+        // query stays as small as the caller asked for.
+        const filter = displayNameSearch
+            ? `(filter: { displayName: { includesInsensitive: ${JSON.stringify(displayNameSearch)} } })`
+            : '';
+
+        const query = `
+            query GetEnumTypes {
+              enumerationTypes${filter} {
+                id displayName relativeName
+                enumerationNames
+                defaultEnumerationValues
+                enumerationColorCodes
+                enumerationDescriptions
+              }
+            }
+        `;
+
+        const resp = await tiqJSHelper.invokeGraphQLAsync(query);
+        const rows = (resp && resp.data && resp.data.enumerationTypes) || [];
+
+        if (!includeValues) return rows;
+
+        for (const row of rows) {
+            const names  = row.enumerationNames         || [];
+            const values = row.defaultEnumerationValues || [];
+            const colors = row.enumerationColorCodes    || [];
+            const descs  = row.enumerationDescriptions  || [];
+            const n = Math.max(names.length, values.length, colors.length, descs.length);
+            const objs = [];
+            for (let i = 0; i < n; i++) {
+                objs.push({
+                    name:        i < names.length  ? names[i]  : null,
+                    value:       i < values.length ? values[i] : null,
+                    color:       i < colors.length ? colors[i] : null,
+                    description: i < descs.length  ? descs[i]  : null,
+                });
+            }
+            row.enumerationTypeObjects = objs;
+        }
+        return rows;
     },
 
 });

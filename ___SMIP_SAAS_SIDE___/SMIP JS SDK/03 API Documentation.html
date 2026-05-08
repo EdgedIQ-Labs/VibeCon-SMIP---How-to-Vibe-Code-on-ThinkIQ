@@ -120,8 +120,10 @@
     <div v-if="tools.length === 0" class="alert alert-info mt-3">
         <strong>SMIP JS SDK</strong> contributes generic mutation helpers
         (<code>apiDemoMethods.updateAttribute</code>,
-        <code>apiDemoMethods.createAttribute</code>,
-        <code>apiDemoMethods.updateObject</code>) but adds no descriptor
+        <code>apiDemoMethods.updateObject</code>) and query helpers
+        (<code>apiDemoMethods.getTypes</code>,
+        <code>apiDemoMethods.getObject</code>,
+        <code>apiDemoMethods.getEnumTypes</code>) but adds no descriptor
         entries to <code>apiDemoTools</code>. Include a tenant-specific
         tenant-specific library on top of this one to populate this
         documentation page.

@@ -238,10 +238,10 @@ doesn't matter. From the consumer's point of view it's one SDK.
 SMIP project, on a different tenant, want this exact method?":
 
 - *Yes* → it's generic. Put it in `SMIP JS SDK/`. Examples:
-  `updateAttribute`, `createAttribute`, `updateObject`, `getTypes` — the
-  four already there. New candidates: anything that wraps a stock
-  PostGraphile mutation/query without referencing tenant types,
-  attribute names, or domain vocabulary.
+  `updateAttribute`, `updateObject`, `getTypes`, `getObject`,
+  `getEnumTypes` — the five already there. New candidates: anything
+  that wraps a stock PostGraphile mutation/query without referencing
+  tenant types, attribute names, or domain vocabulary.
 - *No* → it's tenant-shaped. Put it in `JS SDK Template/`. Examples:
   the doublet demos in the existing template, plus your project's own
   `searchHeatNumbersByGrade`, `getStorageShelfChildEquipment`, etc.
