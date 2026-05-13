@@ -87,6 +87,20 @@ fetch through `/api/tool/get_libraries`, Vue 3 from CDN).
 If the page loads but the table is empty or shows an error, open the
 browser devtools console — the page logs the failed `fetch` clearly.
 
+**Focus the tree.** The playground's left pane shows the instance tree
+rooted at whatever `PLAYGROUND_ROOT_FQN` is set to in `.env`. The default
+is `thinkiq_system` (the SoR root), which works but puts everything two or
+three levels below where your project actually lives. Set it once per
+project to save yourself the navigation:
+
+```
+PLAYGROUND_ROOT_FQN=thinkiq_system.your_org_node
+```
+
+`.env` isn't introduced until step 4 — if you want to do this now,
+`cp .env.example .env` and set that one variable. The Azure OpenAI keys in
+the same file can stay as placeholders until you're ready for step 4.
+
 > **You can stop here and still have a useful VibeCon-SMIP.** Steps 1–3
 > give you transport, a tool registry, the Flask app's docs page, the
 > `/api/tool/<name>` dispatch endpoint, and the BROWSER_SCRIPTS/DISPLAY_SCRIPTS + SCRIPTS workflow.
@@ -105,13 +119,16 @@ them. To wire it up, drop a `.env` at the project root:
 cp .env.example .env
 ```
 
-Edit `.env` with your Azure OpenAI credentials:
+Edit `.env` with your Azure OpenAI credentials (and set the playground
+root if you haven't already):
 
 ```
 AZURE_OPENAI_ENDPOINT=https://YOUR_RESOURCE.openai.azure.com/
 AZURE_OPENAI_API_KEY=...
 AZURE_OPENAI_API_VERSION=2025-01-01-preview     # optional
 AZURE_OPENAI_DEPLOYMENT=gpt-4o                   # optional
+
+PLAYGROUND_ROOT_FQN=thinkiq_system.your_org_node  # focus the playground tree
 ```
 
 Stop the page launcher from step 3 (Ctrl-C) and start the main API instead:

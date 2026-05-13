@@ -25,6 +25,40 @@ except ImportError:
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _attribute_patch_parts(
+    string_value=None,
+    enumeration_value=None,
+    object_value=None,
+    bool_value=None,
+    int_value=None,
+    float_value=None,
+    datetime_value=None,
+):
+    """Return a list of GraphQL patch field strings for updateAttribute.
+
+    Raises TypeError if no value kwarg is supplied (mirrors the single-item
+    update_attribute guard so callers catch it uniformly).
+    """
+    parts = []
+    if string_value is not None:
+        parts.append("stringValue: " + json.dumps(string_value))
+    if enumeration_value is not None:
+        parts.append("enumerationValue: " + json.dumps(enumeration_value))
+    if object_value is not None:
+        parts.append("objectValue: " + json.dumps(object_value))
+    if bool_value is not None:
+        parts.append("boolValue: " + json.dumps(bool_value))
+    if int_value is not None:
+        parts.append("intValue: " + json.dumps(int_value))
+    if float_value is not None:
+        parts.append("floatValue: " + json.dumps(float_value))
+    if datetime_value is not None:
+        parts.append("datetimeValue: " + json.dumps(datetime_value))
+    if not parts:
+        raise TypeError("at least one value kwarg is required")
+    return parts
+
+
 class SMIPMethods:
     """Higher-level SMIP operations (wraps a `SMIPClient`)."""
 
@@ -509,6 +543,80 @@ class SMIPMethods:
         resp = self.client.query(mutation, op_type="mutation")
         payload = ((resp or {}).get("data") or {}).get("updateAttribute") or {}
         return payload.get("attribute")
+
+    def update_attributes(self, items: list):
+        """Batch update N attributes in a SINGLE GraphQL round-trip.
+
+        DESTRUCTIVE: overwrites each attribute's existing value(s). There is
+        no dry-run mode — validate inputs at the call site.
+
+        Parameters
+        ----------
+        items : list of (attribute_id, kwargs) tuples
+            Each entry is ``(attribute_id: str, value_kwargs: dict)`` where
+            `value_kwargs` accepts the same kwargs as ``_attribute_patch_parts``:
+            ``string_value``, ``enumeration_value``, ``object_value``,
+            ``bool_value``, ``int_value``, ``float_value``, ``datetime_value``.
+            At least one value kwarg must be non-None per item.
+
+        Returns
+        -------
+        list
+            One entry per input item (same order). Each entry is the
+            ``attribute`` payload dict ``{id, displayName, stringValue,
+            enumerationName, objectValue, boolValue, intValue, floatValue,
+            datetimeValue}``, or ``None`` if the server returned no attribute
+            for that alias.
+
+        Raises ValueError on malformed items, non-digit attribute ids, or
+        invalid kwargs.
+
+        One GraphQL round-trip (N aliased updateAttribute operations):
+            mutation UpdateAttributesBatch {
+              m0: updateAttribute(input: { id: "…" patch: {…} }) { … }
+              m1: updateAttribute(input: { id: "…" patch: {…} }) { … }
+              …
+            }
+        """
+        if not items:
+            return []
+        prepared = []
+        for idx, item in enumerate(items):
+            try:
+                attribute_id, value_kwargs = item
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"items[{idx}] must be a (attribute_id, kwargs) tuple; got {item!r}"
+                ) from exc
+            if not isinstance(value_kwargs, dict):
+                raise ValueError(f"items[{idx}] kwargs must be a dict; got {value_kwargs!r}")
+            attribute_id = (str(attribute_id) or "").strip()
+            if not attribute_id or not attribute_id.isdigit():
+                raise ValueError(
+                    f"items[{idx}].attribute_id must be a node id; got {attribute_id!r}"
+                )
+            try:
+                patch_parts = _attribute_patch_parts(**value_kwargs)
+            except TypeError as exc:
+                raise ValueError(f"items[{idx}] kwargs invalid: {exc}") from exc
+            patch_str = "{ " + ", ".join(patch_parts) + " }"
+            prepared.append((attribute_id, patch_str))
+        op_blocks = []
+        for idx, (attribute_id, patch_str) in enumerate(prepared):
+            op_blocks.append(
+                f"  m{idx}: updateAttribute(input: {{ id: \"{attribute_id}\" patch: {patch_str} }}) {{ "
+                f"clientMutationId attribute {{ id displayName "
+                f"stringValue enumerationName objectValue "
+                f"boolValue intValue floatValue datetimeValue }} }}"
+            )
+        mutation = "mutation UpdateAttributesBatch { " + " ".join(op_blocks) + " }"
+        resp = self.client.query(mutation, op_type="mutation")
+        data = (resp or {}).get("data") or {}
+        results = []
+        for idx in range(len(prepared)):
+            alias_payload = data.get(f"m{idx}") or {}
+            results.append(alias_payload.get("attribute"))
+        return results
 
     # ---------------------------------------------------------------------
     # export_type_to_smip_exports — pull a tiqType's payload via GraphQL

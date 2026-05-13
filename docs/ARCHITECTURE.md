@@ -142,6 +142,14 @@ rooted at `PLAYGROUND_ROOT_FQN` from `.env`) and a flat list of browser
 scripts (from `/playground/config`). Right pane: either the matching
 twin's iframe or the landing pane (which doubles as inline documentation).
 
+**Re-rooting the tree.** Set `PLAYGROUND_ROOT_FQN` in `.env` to a
+dot-separated FQN and restart the playground — e.g.
+`PLAYGROUND_ROOT_FQN=thinkiq_system.acme_corp`. If the variable is absent
+the playground falls back to `thinkiq_system` (the SoR root). Set it once
+per project; without it you navigate from the top of the tree every
+session. The `.env.example` file at the project root has the full comment
+and a working default.
+
 Adding a new twin:
 
 1. Decide whether it's node-bound (display) or page-level (browser).
