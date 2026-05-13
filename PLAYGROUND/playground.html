@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SMIP — Script Playground</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    /* ============================================================
+       Page chrome — header, two-pane layout, LIVE banner, breadcrumb.
+       ============================================================ */
+    html, body { height: 100%; margin: 0; }
+    body  { font-family: system-ui, -apple-system, sans-serif; color: #1f2937; background: #fff; }
+    #app  { display: flex; flex-direction: column; min-height: 100vh; }
+
+    header { padding: 1rem 1.5rem 0.5rem; border-bottom: 1px solid #e0e6e9; }
+    h1     { font-size: 1.4rem; margin: 0 0 .25rem 0; color: #126181; }
+    h1 .sub { color: #6e8a98; font-weight: normal; font-size: .95rem; margin-left: .5rem; }
+    .meta  { color: #475569; font-size: .85rem; margin: .35rem 0 .5rem 0; }
+    .meta code { background: #f3f7f9; padding: 1px 4px; border-radius: 3px; }
+
+    .live-banner {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: #fdecec; color: #b00020;
+      border: 1px solid #f5c2c2; border-radius: 4px;
+      padding: .15rem .55rem; font-size: .8rem; font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .live-banner::before {
+      content: ""; display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: #b00020;
+    }
+
+    .breadcrumb {
+      margin-top: .5rem; font-size: .85rem; color: #475569; font-family: ui-monospace, Menlo, monospace;
+      word-break: break-all;
+    }
+    .breadcrumb .seg { color: #126181; }
+    .breadcrumb .sep { color: #b0bec5; padding: 0 .15rem; }
+    .breadcrumb .placeholder { color: #94a3b8; font-style: italic; font-family: inherit; }
+
+    .panes { display: flex; flex: 1 1 auto; min-height: 0; }
+    .left {
+      width: 380px; flex: 0 0 380px; min-width: 0;
+      border-right: 1px solid #e0e6e9; overflow-y: auto;
+      background: #fafbfc; padding: .5rem .75rem 1rem .75rem;
+    }
+    .right { flex: 1 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+    .pane-section { margin-top: 1rem; }
+    .pane-section:first-child { margin-top: 0; }
+    .pane-section h3 {
+      margin: 0 0 .35rem 0;
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: #6e8a98;
+      font-weight: 600;
+      padding: 0 .15rem;
+    }
+
+    .browser-script-row {
+      display: flex; align-items: center; gap: .35rem;
+      padding: 4px 8px; border-radius: 6px;
+      cursor: pointer; font-size: .9rem;
+      transition: background-color 0.12s ease;
+    }
+    .browser-script-row:hover { background: #f1f5f9; }
+    .browser-script-row.active { background: #e0f2fe; color: #126181; font-weight: 600; }
+    .browser-script-row::before {
+      content: "📄"; opacity: .55; font-size: .85rem;
+    }
+
+    /* Tab strip — one tab per local-twin display script that applies
+       to the selected node's type. */
+    .script-tabs {
+      display: flex; gap: 2px; padding: .5rem .75rem 0 .75rem;
+      background: #fafbfc; border-bottom: 1px solid #e0e6e9;
+      flex: 0 0 auto;
+    }
+    .script-tab {
+      font: inherit; font-size: .85rem;
+      padding: .35rem .8rem;
+      border: 1px solid #e0e6e9; border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      background: #f1f5f9; color: #475569;
+      cursor: pointer;
+    }
+    .script-tab:hover { background: #e0f2fe; color: #126181; }
+    .script-tab.active {
+      background: #fff; color: #126181; font-weight: 600;
+      border-color: #e0e6e9; border-bottom: 1px solid #fff;
+      margin-bottom: -1px;
+    }
+
+    .display-frame {
+      flex: 1 1 auto; min-height: 0;
+      width: 100%; border: 0; background: #fff;
+    }
+
+    .details-pane-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 1.5rem; }
+
+    .tree-status { padding: .75rem .25rem; color: #94a3b8; font-size: .85rem; font-style: italic; }
+    .tree-status.err { color: #b00020; font-style: normal; }
+
+    /* Tree component — adapted from DevCon-SMIP. */
+    .tree-root {
+      font-size: 0.9rem;
+      color: #1f2937;
+      user-select: none;
+    }
+    .tree-root ul {
+      list-style: none;
+      padding-left: 1rem;
+      margin: 0;
+      border-left: 1px dashed #e2e8f0;
+    }
+    .tree-root > ul {
+      padding-left: 0;
+      border-left: none;
+    }
+    .tree-row {
+      display: flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      line-height: 1.6;
+      transition: background-color 0.12s ease;
+      gap: .35rem;
+    }
+    .tree-row:hover { background-color: #f1f5f9; }
+    .tree-row.has-children { font-weight: 500; }
+    .tree-row.active {
+      background-color: #e0f2fe;
+      color: #126181;
+      font-weight: 600;
+    }
+    .tree-row.active .type-chip {
+      background: #b8d2de; color: #0e4f68;
+    }
+    .tree-caret, .tree-leaf-spacer {
+      display: inline-block;
+      width: 14px;
+      flex: 0 0 14px;
+      text-align: center;
+      color: #64748b;
+      font-size: 0.7rem;
+      line-height: 1;
+    }
+    .tree-label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .type-chip {
+      flex: 0 0 auto;
+      font-size: .65rem; font-weight: 600;
+      background: #e8eef2; color: #6e8a98;
+      padding: 1px 5px; border-radius: 9px;
+      letter-spacing: .02em;
+      text-transform: lowercase;
+    }
+    .tree-row.folder       { cursor: default; color: #6e8a98; }
+    .tree-row.folder:hover { background: transparent; }
+    .tree-row.folder .type-chip { display: none; }
+
+    /* Details + landing panes. */
+    .details-pane { padding-left: .5rem; max-width: 860px; }
+    .details-pane h3 { color: #126181; margin: 0 0 .25rem 0; font-size: 1.1rem; }
+    .details-pane .type-line { color: #64748b; margin-bottom: 1rem; font-size: .9rem; }
+    .details-pane dl { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; font-size: .9rem; margin: .75rem 0 0 0; max-width: 720px; }
+    .details-pane dt { color: #6e8a98; font-weight: 600; }
+    .details-pane dd { margin: 0; color: #126181; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+    .details-pane .empty-state { color: #94a3b8; font-style: italic; }
+    .details-pane .note {
+      margin-top: 1rem; font-size: .85rem; color: #6e8a98; line-height: 1.5;
+      max-width: 720px;
+    }
+    .details-pane .note code { background: #f3f7f9; padding: 1px 4px; border-radius: 3px; }
+
+    .export-btn {
+      margin-left: 1rem; font-size: .8rem;
+      padding: .15rem .6rem; border: 1px solid #b8d2de;
+      background: #f3f7f9; color: #126181; border-radius: 3px;
+      cursor: pointer;
+    }
+    .export-btn:hover  { background: #e0f2fe; }
+    .export-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .export-result { margin-top: .5rem; font-size: .82rem; color: #6e8a98; }
+    .export-result.ok  { color: #1f7a3c; }
+    .export-result.err { color: #b00020; }
+
+    /* Landing pane — shown when nothing is selected. */
+    .landing { max-width: 860px; }
+    .landing h2 { color: #126181; font-size: 1.3rem; margin: .25rem 0 .75rem; }
+    .landing h3 { color: #126181; font-size: 1rem; margin: 1.25rem 0 .35rem; }
+    .landing p  { font-size: .9rem; line-height: 1.55; color: #334155; }
+    .landing ul { font-size: .9rem; line-height: 1.55; color: #334155; }
+    .landing code { background: #f3f7f9; padding: 1px 4px; border-radius: 3px; }
+    .landing .pill {
+      display: inline-block; background: #e0f2fe; color: #126181;
+      padding: 1px 8px; border-radius: 9px; font-size: .72rem;
+      font-weight: 600; letter-spacing: .02em; margin-right: .35rem;
+    }
+  </style>
+</head>
+<body>
+  <script type="text/x-template" id="item-template">
+    <li>
+      <div class="tree-row"
+           :class="{
+             'has-children': hasChildren,
+             'active':       item.id && item.id == activeattrid,
+             'folder':       !item.id
+           }"
+           @click="toggle">
+        <span v-if="hasChildren" class="tree-caret">{{ isOpen ? '▾' : '▸' }}</span>
+        <span v-else class="tree-leaf-spacer"></span>
+        <span class="tree-label"
+              @click.stop="onLabelClick">{{ item.title }}</span>
+        <span v-if="item.typeName" class="type-chip">{{ item.typeName }}</span>
+      </div>
+      <ul v-show="isOpen" v-if="hasChildren">
+        <tree-item
+          v-for="child in item.children"
+          :key="child.id || child.name"
+          :item="child"
+          @on-attribute-click="onAttributeClick"
+          :activeattrid="activeattrid"
+        ></tree-item>
+      </ul>
+    </li>
+  </script>
+
+  <div id="app">
+    <header>
+      <h1>
+        SMIP — Script Playground
+        <span class="sub">tree · display-script twins · browser-script twins</span>
+      </h1>
+      <p class="meta">
+        Tree rooted at <code>{{ rootFqn || '…' }}</code>
+        (set <code>PLAYGROUND_ROOT_FQN</code> in <code>.env</code> to switch).
+        Source: <code>/api/tool/get_object_subtree</code>.
+        <span class="live-banner">LIVE — reads &amp; writes hit SMIP</span>
+      </p>
+      <div class="breadcrumb">
+        <template v-if="mode === 'instance' && selected">
+          <template v-for="(seg, i) in selected.fqn" :key="i">
+            <span v-if="i > 0" class="sep">·</span><span class="seg">{{ seg }}</span>
+          </template>
+        </template>
+        <template v-else-if="mode === 'browser_script' && activeBrowserScript">
+          <span class="seg">browser_script</span>
+          <span class="sep">·</span>
+          <span class="seg">{{ activeBrowserScript.folder }}</span>
+        </template>
+        <span v-else class="placeholder">Pick a node or a browser script.</span>
+      </div>
+    </header>
+
+    <div class="panes">
+      <aside class="left">
+        <div class="pane-section">
+          <h3>Instance tree</h3>
+          <div v-if="loading"      class="tree-status">Loading subtree…</div>
+          <div v-else-if="error"   class="tree-status err">Error: {{ error }}</div>
+          <div v-else-if="!treeData.length" class="tree-status">No subtree returned.</div>
+          <div v-else class="tree-root">
+            <ul>
+              <tree-item
+                v-for="root in treeData"
+                :key="root.id || root.name"
+                :item="root"
+                @on-attribute-click="onAttributeClick"
+                :activeattrid="activeAttrId"
+              ></tree-item>
+            </ul>
+          </div>
+        </div>
+
+        <div class="pane-section" v-if="browserScripts.length">
+          <h3>Browser scripts</h3>
+          <div
+            v-for="s in browserScripts"
+            :key="s.folder"
+            class="browser-script-row"
+            :class="{active: mode === 'browser_script' && activeBrowserScript && activeBrowserScript.folder === s.folder}"
+            @click="onBrowserScriptClick(s)"
+          >
+            <span class="tree-label">{{ s.label }}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="right">
+        <div v-if="mode === 'instance' && scriptsForSelected.length" class="script-tabs">
+          <button
+            v-for="(s, i) in scriptsForSelected"
+            :key="s.folder"
+            :class="['script-tab', { active: i === activeScriptIndex }]"
+            @click="activeScriptIndex = i"
+          >{{ s.label }}</button>
+        </div>
+
+        <iframe
+          v-if="activeFrameUrl"
+          :src="activeFrameUrl"
+          :key="activeFrameUrl"
+          class="display-frame"
+          frameborder="0"
+        ></iframe>
+
+        <div v-else class="details-pane-wrap">
+          <!-- Details fallback — instance mode but no twin matches. -->
+          <div v-if="mode === 'instance' && selected" class="details-pane">
+            <h3>
+              {{ selected.displayName }}
+              <button
+                class="export-btn"
+                :disabled="exporting"
+                @click="exportSelectedType">
+                {{ exporting ? 'Exporting…' : 'Export type to SMIP Exports/' }}
+              </button>
+            </h3>
+            <div class="type-line">
+              Type: <strong>{{ selected.typeName }}</strong>
+              <span v-if="selected.typeId" style="color:#94a3b8">({{ selected.typeId }})</span>
+            </div>
+            <div v-if="exportMsg" :class="['export-result', exportOk ? 'ok' : 'err']">
+              {{ exportMsg }}
+            </div>
+            <dl>
+              <dt>id</dt>          <dd>{{ selected.id }}</dd>
+              <dt>fqn</dt>         <dd>{{ selected.fqn.join('.') }}</dd>
+              <dt>partOfId</dt>    <dd>{{ selected.partOfId || '—' }}</dd>
+              <dt>importance</dt>  <dd>{{ selected.importance ?? '—' }}</dd>
+              <dt>description</dt> <dd>{{ selected.description || '—' }}</dd>
+            </dl>
+            <p class="note">
+              No local-twin display script in <code>DISPLAY_SCRIPTS/</code>
+              matches this node's type (<code>{{ selected.typeName }}</code>).
+              Add a folder under that path to render a script here when
+              this type is selected.
+            </p>
+          </div>
+
+          <!-- Landing pane — shown on first load (or after Cancel). -->
+          <div v-else class="details-pane landing">
+            <h2>Welcome to the playground.</h2>
+            <p>
+              This is the workbench for iterating on SMIP-side scripts
+              without round-tripping through the SMIP IDE on every edit.
+              Two trees on the left, one render frame on the right.
+            </p>
+
+            <h3><span class="pill">Display scripts</span>node-bound twins</h3>
+            <p>
+              Pick a node in the instance tree. If a folder under
+              <code>DISPLAY_SCRIPTS/&lt;folder&gt;/</code> binds to that
+              node's type, the right pane mounts the twin and passes the
+              node id as <code>std_inputs.node_id</code> — the same shape
+              SMIP gives the script in production. Edit
+              <code>local_twin.html</code>, refresh, see real data.
+            </p>
+
+            <h3><span class="pill">Browser scripts</span>standalone twins</h3>
+            <p>
+              Pick from the Browser Scripts list. No node binding; the
+              twin renders whatever it wants (a library list, a dashboard,
+              anything page-level). Edit
+              <code>BROWSER_SCRIPTS/&lt;folder&gt;/local_twin.html</code>
+              and refresh.
+            </p>
+
+            <h3>Adding a twin</h3>
+            <ul>
+              <li>Decide whether it's node-bound (display) or page-level (browser).</li>
+              <li>Create the folder under the matching top-level directory.</li>
+              <li>Drop in <code>__init__.py</code>, <code>component.py</code>, and <code>local_twin.html</code>.</li>
+              <li>For display scripts, add an entry to <code>DISPLAY_SCRIPTS_BY_TYPE</code> in <code>PLAYGROUND/playground.py</code>.</li>
+              <li>For browser scripts, add an entry to <code>BROWSER_SCRIPTS_CATALOG</code> in the same file.</li>
+              <li>Restart the playground.</li>
+            </ul>
+
+            <h3>Exporting a type</h3>
+            <p>
+              Select any node in the tree — the details panel has an
+              "Export type to SMIP Exports/" button that pulls the type's
+              JSON via GraphQL and writes it to
+              <code>___SMIP_SAAS_SIDE___/SMIP Exports/&lt;type_fqn&gt;.json</code>.
+              That folder is the canonical paste-target for SMIP type
+              imports — committing it tracks your modeling work in source
+              control.
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    const treeItemComponent = {
+      template: "#item-template",
+      props: {
+        item:         { type: Object, required: true },
+        activeattrid: { type: String, default: "" },
+      },
+      emits: ["on-attribute-click"],
+      data() { return { isOpen: false }; },
+      computed: {
+        hasChildren() { return this.item.children && this.item.children.length > 0; },
+      },
+      methods: {
+        toggle() {
+          if (this.hasChildren) this.isOpen = !this.isOpen;
+        },
+        onLabelClick() {
+          if (this.item.id) {
+            this.$emit("on-attribute-click", this.item.id);
+          } else if (this.hasChildren) {
+            this.isOpen = !this.isOpen;
+          }
+        },
+        onAttributeClick(id) {
+          this.$emit("on-attribute-click", id);
+        },
+      },
+    };
+
+    const app = createApp({
+      data() {
+        return {
+          loading:           false,
+          error:             "",
+          rootFqn:           "",
+          rootRaw:           null,
+          descendants:       [],
+          treeData:          [],
+
+          // mode: 'landing' | 'instance' | 'browser_script'
+          mode:               "landing",
+          activeAttrId:       "",
+          activeScriptIndex:  0,
+          activeBrowserScript: null,
+
+          // Config from /playground/config
+          displayScriptsByType: {},
+          browserScripts:       [],
+
+          // Export button state.
+          exporting:  false,
+          exportMsg:  "",
+          exportOk:   false,
+        };
+      },
+      computed: {
+        instanceById() {
+          const m = {};
+          if (this.rootRaw) m[this.rootRaw.id] = this.rootRaw;
+          for (const d of this.descendants) m[d.id] = d;
+          return m;
+        },
+        selected() {
+          return this.activeAttrId ? (this.instanceById[this.activeAttrId] || null) : null;
+        },
+        scriptsForSelected() {
+          if (!this.selected) return [];
+          return this.displayScriptsByType[this.selected.typeName] || [];
+        },
+        activeFrameUrl() {
+          if (this.mode === "instance") {
+            const tab = this.scriptsForSelected[this.activeScriptIndex];
+            if (!tab || !this.activeAttrId) return "";
+            const linkId = tab.smipScriptId
+                        || (this.selected && this.selected.typeId)
+                        || "";
+            return "/display_script/" + encodeURIComponent(tab.folder) +
+                   "?node_id="   + encodeURIComponent(this.activeAttrId) +
+                   "&script_id=" + encodeURIComponent(linkId);
+          }
+          if (this.mode === "browser_script" && this.activeBrowserScript) {
+            return "/browser_script/" + encodeURIComponent(this.activeBrowserScript.folder) +
+                   "?script_id=0";
+          }
+          return "";
+        },
+      },
+      watch: {
+        activeAttrId() {
+          this.activeScriptIndex = 0;
+          this.exportMsg = "";
+        },
+      },
+      methods: {
+        async loadConfig() {
+          try {
+            const r = await fetch("/playground/config");
+            const env = await r.json();
+            if (env && env.ok && env.data) {
+              this.rootFqn               = String(env.data.root_fqn || "thinkiq_system");
+              this.displayScriptsByType  = env.data.display_scripts_by_type || {};
+              this.browserScripts        = env.data.browser_scripts         || [];
+            } else {
+              this.rootFqn = "thinkiq_system";
+            }
+          } catch (_) {
+            this.rootFqn = "thinkiq_system";
+          }
+        },
+
+        async loadSubtree() {
+          this.loading = true;
+          this.error = "";
+          try {
+            const r = await fetch("/api/tool/get_object_subtree", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ args: { root_fqn: this.rootFqn } }),
+            });
+            const env = await r.json();
+            if (!env.ok) throw new Error(env.error || ("HTTP " + r.status));
+            this.rootRaw     = env.data.root;
+            this.descendants = env.data.descendants || [];
+            this.treeData    = this.buildTree(this.rootRaw, this.descendants);
+          } catch (e) {
+            this.error = e.message || String(e);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        buildTree(root, descendants) {
+          if (!root) return [];
+          const rootFqnLen = (root.fqn || []).length;
+          const rootNode = {
+            name:       (root.fqn || [])[rootFqnLen - 1] || root.displayName,
+            title:      root.displayName,
+            id:         root.id,
+            typeName:   root.typeName || "",
+            importance: 0,
+            children:   [],
+          };
+
+          for (const item of descendants) {
+            const segments = item.fqn || [];
+            if (segments.length <= rootFqnLen) continue;
+            let cur = rootNode;
+            for (let i = rootFqnLen; i < segments.length; i++) {
+              const seg = segments[i];
+              const isLeaf = (i === segments.length - 1);
+              let child = cur.children.find(x => x.name === seg);
+              if (!child) {
+                child = {
+                  name:       seg,
+                  title:      isLeaf ? item.displayName : seg,
+                  id:         isLeaf ? item.id : 0,
+                  typeName:   isLeaf ? (item.typeName || "") : "",
+                  importance: isLeaf ? (item.importance ?? 0) : 0,
+                  children:   [],
+                };
+                cur.children.push(child);
+              } else if (isLeaf) {
+                child.title      = item.displayName;
+                child.id         = item.id;
+                child.typeName   = item.typeName || "";
+                child.importance = item.importance ?? 0;
+              }
+              cur = child;
+            }
+          }
+
+          const sortRecursive = (node) => {
+            node.children.sort((a, b) => {
+              const ai = a.importance ?? 0;
+              const bi = b.importance ?? 0;
+              if (ai !== bi) return ai - bi;
+              return (a.title || "").localeCompare(b.title || "");
+            });
+            for (const c of node.children) sortRecursive(c);
+          };
+          sortRecursive(rootNode);
+
+          return [rootNode];
+        },
+
+        onAttributeClick(id) {
+          if (id && id != 0) {
+            this.activeAttrId = String(id);
+            this.mode = "instance";
+            this.activeBrowserScript = null;
+          }
+        },
+
+        onBrowserScriptClick(s) {
+          this.activeBrowserScript = s;
+          this.mode = "browser_script";
+          this.activeAttrId = "";
+        },
+
+        async exportSelectedType() {
+          if (!this.selected || !this.selected.typeId) return;
+          this.exporting  = true;
+          this.exportMsg  = "";
+          this.exportOk   = false;
+          try {
+            const r = await fetch("/api/tool/export_type_to_smip_exports", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ args: { type_id: String(this.selected.typeId) } }),
+            });
+            const env = await r.json();
+            if (!env.ok) throw new Error(env.error || ("HTTP " + r.status));
+            this.exportOk  = true;
+            this.exportMsg = "Wrote " + (env.data.path || "(unknown path)");
+          } catch (e) {
+            this.exportMsg = "Export failed: " + (e.message || String(e));
+          } finally {
+            this.exporting = false;
+          }
+        },
+      },
+      async mounted() {
+        await this.loadConfig();
+        await this.loadSubtree();
+      },
+    });
+
+    app.component("tree-item", treeItemComponent);
+    app.mount("#app");
+  </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # Architecture
 
-How VibeCon-SMIP is wired and why. Reference rather than narrative — dip in for
-the section you need.
+How VibeCon-SMIP is wired and why. Reference rather than narrative — dip in
+for the section you need.
 
 If you're trying to get the template running for the first time, start with
 [QUICKSTART](QUICKSTART.md). If you have it running and want to know how to
@@ -10,115 +10,156 @@ work with it well, see [WORKFLOW](WORKFLOW.md).
 ## Architecture at a glance
 
 ```
-SMIP_IO/      transport
-  smip_client.py        SMIPClient — auth (JWT challenge/response) + GraphQL POST.
-                        Based on the CESMII "Simple SMIP Client Example" template
-                        (link in the file header).
-  smip_methods.py       SMIPMethods — high-level operations (one method per business question)
-  model/                Optional: Python dataclasses for typed responses (project-specific)
+SMIP_IO/         transport
+  smip_client.py             SMIPClient — JWT challenge/response + GraphQL POST.
+                             Based on the CESMII "Simple SMIP Client Example".
+  smip_methods.py            SMIPMethods — high-level operations
+                             (one method per business question).
+  model/                     Optional: Python dataclasses for typed responses.
 
-SMIP_MCP/     single source of truth for tools
-  smip_tools.py         TOOL_REGISTRY — descriptions, params, dispatch fns
-  smip_mcp_server.py    FastMCP server exposing each tool to MCP clients
-  agent_prompt.py       SYSTEM_INSTRUCTIONS shared by chat agent + MCP
+SMIP_MCP/        single source of truth for tools
+  smip_tools.py              TOOL_REGISTRY — descriptions, params, dispatch fns.
+  smip_mcp_server.py         FastMCP server exposing tools to MCP clients.
+  agent_prompt.py            SYSTEM_INSTRUCTIONS shared by chat agent + MCP.
 
-SMIP_API/     Flask surface
-  smip_flask_api.py                   /, /chat[/_stack/_canvas], /api/tool/<name>, /api/chat
-  smip_flask_api_documentation.html   Vue docs page (rendered from TOOL_REGISTRY_PUBLIC)
-  smip_chat[/_stack/_canvas].html     three chat UIs
+SMIP_API/        Flask surface
+  smip_flask_api.py          /, /chat[/_stack/_canvas], /api/tool/<name>,
+                             /api/chat, /api/graphql, /api/smip_origin.
+  smip_flask_api_documentation.html      Vue docs page (TOOL_REGISTRY_PUBLIC).
+  smip_chat[/_stack/_canvas].html        three chat UIs.
 
-PAGES/        browser-side pages — runnable .py per page
-  <NN>_<page_name>/                   one folder per page
-    <page_name>.py                    standalone runner
-    <page_name>.html                  Vue single-file page
+DISPLAY_SCRIPTS/    SMIP-side node-bound twins (mirror of SMIP Display Scripts)
+  <name>/
+    __init__.py              Side-effect: runs component.py.
+    component.py             Exposes register(app).
+    local_twin.html          Vue body; paste target is
+                             ___SMIP_SAAS_SIDE___/SMIP Display Scripts/<name>.html.
 
-SCRIPTS/      worker / automation scripts — runnable .py per task
-  <NN>_<task>.py                      e.g. 01_migrate_units.py,
-                                      02_refactor_model.py — one-shot
-                                      or batch operations against the SMIP
-                                      (migrations, model refactors, data
-                                      fixups). Headless; no Vue, no Flask.
+BROWSER_SCRIPTS/    SMIP-side standalone twins (mirror of SMIP Browser Scripts)
+  <name>/
+    __init__.py
+    component.py
+    local_twin.html          Paste target is
+                             ___SMIP_SAAS_SIDE___/SMIP Browser Scripts/<name>.html.
+
+_shims/             shared runtime shim consumed by both twin flavors
+  tiq_runtime.js             Polyfills tiqContext, tiqJSHelper,
+                             apiDemoMethods, SMIP-only-link interception.
+
+_shim_routes.py     shared shim-route helper (one /shims/<path> mount per app)
+
+PLAYGROUND/         the workbench
+  playground.py              Flask launcher on port 5105 — mounts every twin,
+                             registers /playground, exposes /playground/config.
+  playground.html            Vue SPA: instance tree + browser-script list,
+                             iframe render pane, self-documenting landing
+                             pane, "Export type" button.
+
+SCRIPTS/         worker / automation scripts — local Python only
+  <NN>_<task>.py             e.g. 01_list_libraries.py. Headless, run-and-exit.
+                             No SMIP-side counterpart by design — see the
+                             "opinion" section in the top-level README.
 
 ___SMIP_SAAS_SIDE___/   reference material + SMIP-side libraries
-  GraphQL Schema/         introspection export of the SMIP GraphQL API
-  SMIP Exports/           drop-zone for SMIP library export JSONs (type
-                          libraries, script libraries) used as LLM context
-  SMIP JS SDK/            generic, tenant-agnostic JS SDK — grown in this
-                          repo. apiDemoMethods + apiDemoTools wrappers
-                          around generic SMIP mutations/queries
-                          (updateAttribute, updateObject, getTypes,
-                          getObject, getEnumTypes). The home for new
-                          generic SMIP plumbing.
-  JS SDK Template/        domain/tenant-specific JS SDK — vendored snapshot
-                          of DevCon-SMIP Topic 06 / Take 4. Per-project
-                          methods live here (and merge additively into the
-                          same apiDemoMethods / apiDemoTools globals).
-  Sample Scripts/         vendored SMIP browser-script + display-script
-                          templates — the conversion targets for PAGES.
-                          Vibe-code a page in Python under PAGES/, then port
-                          it back into one of these templates so it lives on
-                          the SMIP side as a first-class script.
+  GraphQL Schema/            Introspection export of the SMIP GraphQL API.
+  SMIP Exports/              Drop-zone for SMIP library / type export JSONs.
+                             The playground's "Export type" button writes here.
+  SMIP JS SDK/               Generic, tenant-agnostic JS SDK (grown in this
+                             repo). apiDemoMethods + apiDemoTools wrappers.
+  JS SDK Template/           Domain/tenant-specific JS SDK (vendored from
+                             DevCon-SMIP). Edits go upstream first.
+  SMIP Display Scripts/      Paste targets for DISPLAY_SCRIPTS/ twins.
+  SMIP Browser Scripts/      Paste targets for BROWSER_SCRIPTS/ twins.
 ```
 
-The directional convention: data flows in via SMIP_IO, business semantics live
-in SMIP_MCP's TOOL_REGISTRY (one source of truth), and SMIP_API + PAGES are the
-surfaces. Adding a new tool means editing `smip_tools.py` and `smip_methods.py`;
-everything else (REST endpoint, OpenAI tool spec, MCP wrapper schema, docs page
-section) is derived.
+The directional convention: data flows in via SMIP_IO, business semantics
+live in SMIP_MCP's TOOL_REGISTRY (one source of truth), SMIP_API and the
+twin frameworks are the surfaces. Adding a new tool means editing
+`smip_tools.py` and `smip_methods.py`; everything else (REST endpoint,
+OpenAI tool spec, MCP wrapper schema, docs page section) is derived.
 
 ## The tool registry
 
-Adding a new query to the agent + REST + MCP at the same time is a three-step
-job:
+Adding a new query to the agent + REST + MCP at the same time is a
+three-step job:
 
-1. **Add the method** to `SMIPMethods` in `SMIP_IO/smip_methods.py` — does the
-   GraphQL round-trip(s) and returns plain Python (list of dicts is the
-   standard shape).
+1. **Add the method** to `SMIPMethods` in `SMIP_IO/smip_methods.py` —
+   does the GraphQL round-trip(s) and returns plain Python.
 2. **Add the registry entry** in `SMIP_MCP/smip_tools.py` —
-   `name / summary / description / parameters / ui / fn`. The `description`
-   is what the LLM sees; the `fn` lambda dispatches to the SMIPMethods
-   method.
-3. **Add the typed MCP wrapper** in `SMIP_MCP/smip_mcp_server.py` (3 lines)
-   so FastMCP can build the JSON schema from the Python signature.
+   `name / summary / description / parameters / ui / fn`. The
+   `description` is what the LLM sees; the `fn` lambda dispatches to the
+   SMIPMethods method. Add `"llm_exposed": False` for tools that should
+   reach `/api/tool/<name>` but stay out of the chat agent's tool spec
+   (e.g. mutations, bulk fetches, file-writing utilities).
+3. **Add the typed MCP wrapper** in `SMIP_MCP/smip_mcp_server.py` (3
+   lines) so FastMCP can build the JSON schema from the Python signature
+   — only needed when `llm_exposed` is true.
 
 Everything else is derived: the `/api/tool/<name>` endpoint picks it up
-automatically, the OpenAI tool spec for `/api/chat` includes it, the docs
-page renders a section for it, and `attach_docstrings_to(SMIPMethods)` would
-copy the description onto the method's `__doc__` for IDE tooltips.
+automatically, the OpenAI tool spec for `/api/chat` includes it, the
+docs page renders a section for it.
 
 ### Conventions across the registry
 
-- **Empty input means "all"** wherever it makes sense. Keeps callers from
-  threading the needle of "what's the magic word for unfiltered?".
-- **Server-side filters where possible.** PostGraphile's `*Filter` types
-  expose `includesInsensitive`, `contains`, `overlaps` and friends — push
-  the filter to the GraphQL layer rather than fetching everything and
-  trimming client-side.
-- **Flat rows over nested trees.** A row should be self-contained where
-  practical so callers don't have to cross-reference a tree to get useful
-  results.
+- **Empty input means "all"** wherever it makes sense.
+- **Server-side filters where possible** (PostGraphile's `*Filter` types
+  expose `includesInsensitive`, `contains`, `overlaps`).
+- **Flat rows over nested trees** so callers don't have to cross-reference.
 
-## The PAGES convention
+## The three script flavors
 
-A "page" is a folder under `PAGES/` containing HTML + Vue + a tiny Python
-launcher. Each page is its own runnable entry point:
+VibeCon-SMIP distinguishes three kinds of "script" that play different roles:
+
+| Where it runs | Bucket | Triggered by | When to reach for it |
+| --- | --- | --- | --- |
+| Your dev machine | `SCRIPTS/` | `python SCRIPTS/<NN>_<task>.py` | Migrations, model refactors, data fixups, batch operations. Modern Python, no port, no Vue. |
+| Inside SMIP (browser) | `BROWSER_SCRIPTS/` ↔ `SMIP Browser Scripts/` | Open `/applications/<routing>` in SMIP | Standalone pages — dashboards, list views, anything page-level not tied to one instance. |
+| Inside SMIP (browser) | `DISPLAY_SCRIPTS/` ↔ `SMIP Display Scripts/` | View an instance whose type binds this script | Per-instance views — details, edit forms, anything that needs `std_inputs.node_id`. |
+
+What's deliberately absent: a counterpart for SMIP's **Headless Scripts**
+(the third flavor in the SMIP "Add Script" dialog, run on a cron from
+inside SMIP). That surface is PHP / older Python; this template's
+opinion is that batch/automation work belongs in `SCRIPTS/` where the
+Python is modern and the iteration loop is fast. Drop a Headless Script
+into SMIP by hand if you ever need one, but don't expect the template
+to scaffold for it.
+
+## The PLAYGROUND convention
+
+The playground is the one Flask process this template ships with. It
+imports the shared `SMIP_API.app`, mounts every twin module's
+`register(app)` hook, and runs on port 5105. Same-origin fetches with
+relative URLs, no CORS dance, no proxy. Everything you'd want to look
+at lives behind that one port.
 
 ```
-python PAGES/<NN>_<page_name>/<page_name>.py     # boots its own port with the page mounted
+python PLAYGROUND/playground.py
+# then visit http://localhost:5105/playground
 ```
 
-The launcher pattern: add the project root to `sys.path`, import `app` from
-`SMIP_API.smip_flask_api`, decorate it with `@app.route(PAGE_PATH,
-endpoint=...)`, and run the combined app on its own port. Same-origin fetches
-with relative URLs, no CORS dance, no proxy. Each page run is its own
-process, so a buggy page can't break sibling pages.
+Left pane: the instance tree (sourced from `/api/tool/get_object_subtree`,
+rooted at `PLAYGROUND_ROOT_FQN` from `.env`) and a flat list of browser
+scripts (from `/playground/config`). Right pane: either the matching
+twin's iframe or the landing pane (which doubles as inline documentation).
 
-Worked example: `PAGES/01_list_libraries/`. Two files — `list_libraries.py`
-(launcher on port 5101) and `list_libraries.html` (Vue 3 from CDN, fetches
-`/api/tool/get_libraries`, renders an `id` / `displayName` table).
+Adding a new twin:
 
-To add a new page: copy an existing one, rename the folder + Python file,
-update the route, and you're off.
+1. Decide whether it's node-bound (display) or page-level (browser).
+2. Create `DISPLAY_SCRIPTS/<folder>/` or `BROWSER_SCRIPTS/<folder>/` with
+   `__init__.py`, `component.py`, and `local_twin.html`.
+3. Add the SMIP-side paste target under `___SMIP_SAAS_SIDE___/SMIP
+   Display Scripts/<folder>.html` (or `SMIP Browser Scripts/`).
+4. Register the module in `PLAYGROUND/playground.py`
+   (`DISPLAY_SCRIPT_MODULES` or `BROWSER_SCRIPT_MODULES`).
+5. For display scripts, add a type binding to `DISPLAY_SCRIPTS_BY_TYPE`
+   in the same file. For browser scripts, add a row to
+   `BROWSER_SCRIPTS_CATALOG`.
+6. Restart the playground.
+
+`DISPLAY_SCRIPTS_BY_TYPE` is a hand-edited map for now. A future
+iteration can replace it with on-the-fly discovery that walks the
+selected type's inheritance via GraphQL and intersects with the on-disk
+folder set. The render path doesn't change when that lands.
 
 ## The SCRIPTS convention
 
@@ -132,53 +173,42 @@ SCRIPTS/
   03_backfill_displaynames.py
 ```
 
-Scripts are for **worker / automation** use cases — migrations, model
-refactors, data fixups, one-off batch operations. They are headless: no Vue,
-no Flask, no port. Each script imports `SMIPClient` (or `SMIPMethods`) from
-`SMIP_IO/`, does its work, prints/logs progress, and exits.
+Each script imports `SMIPClient` (or `SMIPMethods`) from `SMIP_IO/`, does
+its work, prints / logs progress, and exits. The numeric prefix is for
+sort order and rough chronology, not a required execution sequence —
+each script should be independently runnable and idempotent where
+practical.
 
-Worked example: `SCRIPTS/01_list_libraries.py`. Builds a `SMIPMethods` around
-a `SMIPClient`, calls `get_libraries()`, prints `id  displayName` rows, exits
-0/non-zero so it can be wired into a pipeline.
+## The runtime shim
 
-The numeric prefix is just for sort order and rough chronology — it isn't a
-required execution sequence (each script should be independently runnable
-and idempotent where practical). To add a new script: pick the next number,
-drop in a `.py`, import what you need from `SMIP_IO`, and run it.
+`_shims/tiq_runtime.js` is the small file that lets a SMIP-side display
+or browser script body run unmodified on localhost. It polyfills the
+SMIP runtime globals (`window.tiqContext`, `window.tiqJSHelper`,
+`window.apiDemoMethods`), routes `invokeGraphQLAsync` through
+`/api/graphql`, and intercepts SMIP-only `/applications/*` links on
+localhost (copy-to-clipboard + toast) so they keep working when pasted
+into a real SMIP browser tab. On SMIP itself the shim isn't loaded; the
+SMIP runtime provides the globals natively and `/applications/*` links
+follow their default behavior.
 
-## Tools available today
-
-| Tool                          | What it does                                                                                                |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `get_libraries`               | Smoke-test query — every library as `{id, displayName}`. No parameters.                                     |
-
-The starter ships exactly one tool — `get_libraries`, the smoke test —
-on purpose. Add project-specific tools as you go; the
-[QUICKSTART](QUICKSTART.md) step 5 walkthrough builds the first one
-from a single LLM prompt against your library export. See
-[WORKFLOW](WORKFLOW.md) for the recommended way to grow this list.
+The shim lives at the top level (`_shims/`) rather than under
+`DISPLAY_SCRIPTS/` or `BROWSER_SCRIPTS/` because both flavors consume it
+— it isn't owned by either. `_shim_routes.py` exports the
+`register_shim_routes(app)` helper that mounts `/shims/<path>` on a
+Flask app idempotently; both `DISPLAY_SCRIPTS/__init__.py` and
+`BROWSER_SCRIPTS/__init__.py` call it when registering a twin.
 
 ## The two-layer JS SDK on the SMIP side
 
-`___SMIP_SAAS_SIDE___/` holds two JS SDK folders, deliberately split along
-a generic/domain seam:
+`___SMIP_SAAS_SIDE___/` holds two JS SDK folders, deliberately split
+along a generic/domain seam:
 
-| Folder            | Scope                              | Lifecycle                                                    |
-| ----------------- | ---------------------------------- | ------------------------------------------------------------ |
-| `SMIP JS SDK/`    | **Generic** SMIP plumbing          | Grows in *this* repo. Edit here directly.                    |
-| `JS SDK Template/`| **Domain / tenant-specific** tools | Vendored snapshot from DevCon-SMIP. Edits go upstream first. |
+| Folder | Scope | Lifecycle |
+| --- | --- | --- |
+| `SMIP JS SDK/` | **Generic** SMIP plumbing | Grows in *this* repo. Edit here directly. |
+| `JS SDK Template/` | **Domain / tenant-specific** tools | Vendored snapshot from DevCon-SMIP. Edits go upstream first. |
 
-The split mirrors the Python side:
-
-- `SMIP JS SDK/` is the JS analogue of the generic helpers on `SMIPClient`
-  and `SMIPMethods` (low-level GraphQL wrappers like `updateAttribute`,
-  `updateObject`, `getTypes`, `getObject`, `getEnumTypes`) — things that
-  are useful on every tenant, regardless of the model.
-- `JS SDK Template/` is the JS analogue of project-specific methods on
-  `SMIPMethods` (`get_libraries`, `get_quantities_with_units`, …) — built
-  for a particular tenant's vocabulary.
-
-Both libraries use the same **additive merge pattern** at the top of their
+Both libraries use an additive-merge pattern at the top of their
 `02 API Tools.html`:
 
 ```js
@@ -189,115 +219,60 @@ Object.assign(apiDemoMethods, { /* this library's methods */ });
 ```
 
 Whichever loads first establishes the globals; later loads merge their
-contributions in. A consumer SMIP script does two `includeScript` calls —
-one for `smip_js_sdk.api_tools`, one for the tenant SDK — and ends up with
-both sets of methods on a single `apiDemoMethods` namespace and both sets
-of descriptors on a single `apiDemoTools` catalog. Order doesn't matter.
+contributions in. Order doesn't matter.
 
-**Why this matters for the round-trip.** When you port a Python
-`SMIPMethods` method into the SMIP-side world (WORKFLOW step 5), it lands
-in one of these two folders depending on what it is:
+When a Python `SMIPMethods` method gets ported into the SMIP-side world,
+it lands in `SMIP JS SDK/` (if it's a generic helper any SMIP project
+would benefit from) or `JS SDK Template/` (if it's tenant-specific).
 
-- A new generic helper that any SMIP project would benefit from →
-  `SMIP JS SDK/` (and grows the in-repo generic surface).
-- A tenant-specific method tied to your library's types and attributes →
-  `JS SDK Template/` (and stays tenant-shaped).
+## Type / library extension and the base-library lock
 
-Over time, `SMIP JS SDK/` becomes the JS-side counterpart of the generic
-parts of `SMIP_IO/smip_methods.py`, and `JS SDK Template/` becomes the
-counterpart of the tenant-specific parts.
+The base ThinkIQ libraries are `locked: true`. You cannot mutate a
+base-library type's definition (attributes, scripts, inheritance) from
+outside. To bind a custom Display Script to instances of a base type:
 
-## Sample SMIP browser scripts (vendored)
+1. **Derive** the type in your own (unlocked) library, setting
+   `sub_type_of_fqn` to point at the base type. The derived type
+   inherits the base attribute schema.
+2. **Attach** your Display Script to the derived type.
+3. **Re-type** existing instances to the derived type so the script
+   fires when they're viewed.
 
-Under `___SMIP_SAAS_SIDE___/Sample Scripts/`:
+Deleting a type is a hard cascade — instances typed as it get deleted
+with no prompt. The reliable recovery surface is a peer SMIP tenant
+held as a reference mirror; capture values from there and rebuild.
 
-| File                          | Upstream (DevCon-SMIP, Part I / Topic 01)                                           | What it does                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `sample_browser_script.html`  | `02 Template with Vue GraphQL Context.php`                                          | Lists every `quantity` and its `measurementUnits`             |
-| `sample_display_script.html`  | `02.2 Display Script Template with Vue GraphQL Context.php`                         | Renders the instance at `context.std_inputs.node_id` + children |
+## Tools available today
 
-Both files carry their upstream URL in a header comment. The `.html` extension
-is for editor convenience — the contents are SMIP-runtime templates, not
-browser-loadable HTML. **Edits go upstream first, then re-vendor here.**
+| Tool | What it does | LLM-exposed |
+| --- | --- | --- |
+| `get_libraries` | Smoke-test query — every library as `{id, displayName}`. | yes |
+| `get_object_subtree` | Root object + flat descendants list for a given `root_fqn` or `root_id`. Powers the playground tree. | no |
+| `update_attribute` | Update one attribute by id. Used by display-script edit forms. | no |
+| `export_type_to_smip_exports` | Pull a tiqType's JSON and write it to `___SMIP_SAAS_SIDE___/SMIP Exports/<fqn>.json`. | no |
 
-These files are the **conversion targets** for the `PAGES/` workflow — see
-[WORKFLOW](WORKFLOW.md) for how the round-trip back to SMIP-side scripts works.
-
-Upstream repo: <https://github.com/gregorvilkner/DevCon-SMIP---How-to-Code-on-ThinkIQ>
-
-## Repository layout
-
-```
-.
-├── README.md                       # high-level intro + pointers
-├── docs/
-│   ├── QUICKSTART.md               # step-by-step getting started
-│   ├── WORKFLOW.md                 # recommended workflow / best practices
-│   └── ARCHITECTURE.md             # this file
-├── requirements.txt                # union of every surface's deps
-├── .env / .env.example             # AZURE_OPENAI_* for /api/chat
-├── .gitignore                      # ignores .env, __pycache__, .venv, etc.
-│
-├── SMIP_IO/                        # transport
-│   ├── smip_client.py
-│   ├── smip_methods.py
-│   ├── model/                      # optional: typed dataclasses (project-specific)
-│   ├── config.json (gitignored)
-│   └── config.example.json
-│
-├── SMIP_MCP/                       # single source of truth for tools
-│   ├── smip_tools.py               # TOOL_REGISTRY + derived OPENAI_TOOLS / make_dispatch
-│   ├── smip_mcp_server.py          # FastMCP stdio + SSE entry points
-│   └── agent_prompt.py             # SYSTEM_INSTRUCTIONS
-│
-├── SMIP_API/                       # Flask app
-│   ├── smip_flask_api.py
-│   └── smip_flask_api_documentation.html, smip_chat[/_stack/_canvas].html
-│
-├── PAGES/                          # one folder per browser-side page
-│   └── 01_list_libraries/          #   sample page — lists libraries
-│       ├── list_libraries.py       #     launcher (port 5101, /list_libraries)
-│       └── list_libraries.html     #     Vue page (calls /api/tool/get_libraries)
-│
-├── SCRIPTS/                        # one runnable .py per worker/automation task
-│   └── 01_list_libraries.py        #   sample script — prints every library
-│
-└── ___SMIP_SAAS_SIDE___/           # SMIP-side reference material + libraries
-    ├── GraphQL Schema/             #   introspection export of the SMIP GraphQL API
-    ├── SMIP Exports/               #   drop-zone for SMIP library export JSONs
-    │                               #   (type libraries / script libraries used as LLM context)
-    ├── SMIP JS SDK/                #   GENERIC, tenant-agnostic JS SDK — grown in this repo
-    │                               #   apiDemoMethods + apiDemoTools wrappers around generic
-    │                               #   SMIP mutations/queries (updateAttribute, updateObject,
-    │                               #   getTypes, getObject, getEnumTypes). Edit here directly.
-    ├── JS SDK Template/            #   DOMAIN/TENANT-SPECIFIC JS SDK
-    │                               #   vendored snapshot of DevCon-SMIP Topic 06 / Take 4
-    │                               #   (https://github.com/gregorvilkner/DevCon-SMIP---How-to-Code-on-ThinkIQ)
-    │                               #   edits go upstream first, then re-vendor
-    └── Sample Scripts/             #   vendored SMIP browser-script samples
-                                    #   (Joomla/PHP templates rendered by the SMIP runtime)
-                                    #   sample_browser_script.html  — Topic 01 / 02   "Template with Vue GraphQL Context"
-                                    #   sample_display_script.html  — Topic 01 / 02.2 "Display Script Template with Vue GraphQL Context"
-                                    #   upstream: github.com/gregorvilkner/DevCon-SMIP---How-to-Code-on-ThinkIQ
-```
+`llm_exposed: False` means the tool is reachable at `/api/tool/<name>`
+(the playground and twins call it directly) but excluded from the chat
+agent's tool spec — the agent doesn't get blind access to mutations or
+file-writing utilities.
 
 ## Key dependencies
 
-- `flask`, `python-dotenv` — the API server
-- `openai` — Azure OpenAI for `/api/chat`
-- `requests` — SMIPClient HTTP transport
-- `mcp` — FastMCP server framework
-- `gunicorn`, `uvicorn` — for serving the MCP SSE app on Azure
+- `flask`, `python-dotenv` — the API server.
+- `openai` — Azure OpenAI for `/api/chat`.
+- `requests` — `SMIPClient` HTTP transport.
+- `mcp` — FastMCP server framework.
+- `gunicorn`, `uvicorn` — for serving the MCP SSE app on Azure.
 
 ## Conventions that travel through the codebase
 
-- **One process, one purpose.** SMIP_API runs the backend; each page py
-  runs its own combined process for that page.
-- **Empty input means "all".** The default pattern for filter parameters.
-- **Vibe-code pages freely.** Pages live under `PAGES/`, each in its own
-  process when run, using the standalone launcher pattern. The backend is
-  unaffected by what they do.
-- **Numbered scripts under `SCRIPTS/`.** Worker / automation tasks live as
-  `01_do_this.py`, `02_do_that.py` — one-shot or batch operations like
-  migrations or model refactors. Headless, run-and-exit; not pages, not
-  long-running services.
+- **One process, one purpose.** The playground is the single Flask
+  process. Twins mount on it via `register(app)`; no separate ports.
+- **Empty input means "all".** Default pattern for filter parameters.
+- **Vibe-code twins freely.** Edit `local_twin.html`, refresh the
+  iframe in the playground, see real data. Paste back into SMIP when
+  ready.
+- **Numbered scripts under `SCRIPTS/`.** Headless run-and-exit; not
+  pages, not long-running services.
+- **The base library is locked.** Extend in your own library; don't
+  try to mutate base types in place.

@@ -5,6 +5,9 @@ file can be reused as a template across projects.
 """
 
 import json
+import datetime
+import re
+from pathlib import Path
 
 # SMIPClient is required for SMIPMethods to be useful at all, so import it
 # eagerly. Try the package-mode path first, then the flat-mode fallback.
@@ -14,6 +17,12 @@ try:
 except ImportError:
     # Flat-mode (SMIP_IO itself on sys.path)
     from smip_client import SMIPClient                  # type: ignore
+
+
+# Project root — used by file-writing tools like
+# `export_type_to_smip_exports`. SMIP_IO/smip_methods.py lives one level
+# below the repo root.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class SMIPMethods:
@@ -48,6 +57,148 @@ class SMIPMethods:
         query = "query GetLibraries { libraries { id displayName } }"
         resp = self.client.query(query)
         return ((resp or {}).get("data") or {}).get("libraries") or []
+
+    # ---------------------------------------------------------------------
+    # get_object_subtree — generic subtree fetch used by the display-script
+    # playground's tree pane and any "show me everything under this node"
+    # caller. Two GraphQL round-trips when called with FQN, one when called
+    # with `root_id`. Returns a flat descendants list with `partOfId` on
+    # every row so callers can fold into a tree client-side in one pass.
+    # ---------------------------------------------------------------------
+    def get_object_subtree(
+        self,
+        root_id: str = "",
+        root_fqn: str = "",
+    ):
+        """Return the root object + a flat list of every descendant under it.
+
+        Either `root_id` (digit string) OR `root_fqn` (dot-separated FQN
+        like "thinkiq_system" or "thinkiq_system.applications") must be
+        supplied. If both are passed `root_id` wins.
+
+        The flat descendant list carries `partOfId` on every row, so
+        callers can rebuild the tree client-side in one pass without
+        further round-trips.
+
+        Parameters
+        ----------
+        root_id : str, optional
+            SMIP object id (digits only). Empty string => use root_fqn.
+        root_fqn : str, optional
+            Dot-separated FQN. Empty string => use root_id.
+
+        Returns
+        -------
+        dict
+            {
+              "root": {                                # the subtree's root
+                "id":          "<digits>",
+                "displayName": "<...>",
+                "fqn":         ["thinkiq_system", ..., "<leaf>"],
+                "typeId":      "<digits>",
+                "typeName":    "<relativeName>",
+                "description": "<... | null>",
+              },
+              "descendants": [                          # strict descendants only
+                {
+                  "id", "displayName", "fqn",
+                  "partOfId",                           # parent in the tree
+                  "typeId", "typeName", "description",
+                  "importance",                          # SoR sort key
+                }, ...
+              ],
+            }
+
+        Raises ValueError if neither root_id nor root_fqn is supplied,
+        if root_id is non-digit, or if root_fqn cannot be resolved.
+
+        Two GraphQL round-trips when called with FQN, one when called
+        with `root_id`.
+        """
+        root_id = (root_id or "").strip()
+        root_fqn = (root_fqn or "").strip()
+
+        if root_id and not root_id.isdigit():
+            raise ValueError("root_id must be a digit string")
+        if not root_id and not root_fqn:
+            raise ValueError("either root_id or root_fqn is required")
+
+        # ---- 1. Resolve FQN -> id when needed ---------------------------
+        if not root_id:
+            fqn_list = [seg for seg in root_fqn.split(".") if seg]
+            if not fqn_list:
+                raise ValueError(
+                    f"root_fqn is empty after splitting: {root_fqn!r}"
+                )
+            resolve_query = (
+                "query ResolveByFqn { "
+                "  objects(filter: { fqn: { equalTo: "
+                + json.dumps(fqn_list) +
+                " } }, first: 1) { "
+                "    id displayName fqn typeId typeName description "
+                "  } "
+                "}"
+            )
+            resp = self.client.query(resolve_query)
+            rows = ((resp or {}).get("data") or {}).get("objects") or []
+            if not rows:
+                raise ValueError(f"No object resolves to fqn {fqn_list}")
+            root_obj = rows[0]
+            root_id = root_obj["id"]
+        else:
+            root_obj = None  # filled in from descendants response below
+
+        # ---- 2. Pull root + descendants by idPath contains --------------
+        subtree_query = (
+            "query GetSubtree { "
+            "  objects(filter: { idPath: { contains: "
+            + json.dumps(root_id) +
+            " } }) { "
+            "    id displayName fqn partOfId typeId typeName description importance "
+            "  } "
+            "}"
+        )
+        resp = self.client.query(subtree_query)
+        rows = ((resp or {}).get("data") or {}).get("objects") or []
+
+        # idPath: contains rootId returns the root itself + every descendant.
+        # Split them.
+        descendants = []
+        for r in rows:
+            if r.get("id") == root_id:
+                if root_obj is None:
+                    # Caller passed root_id directly; fill root_obj from this row.
+                    root_obj = {
+                        "id":          r.get("id"),
+                        "displayName": r.get("displayName"),
+                        "fqn":         r.get("fqn"),
+                        "typeId":      r.get("typeId"),
+                        "typeName":    r.get("typeName"),
+                        "description": r.get("description"),
+                    }
+            else:
+                descendants.append(r)
+
+        if root_obj is None:
+            # Root wasn't in the descendants result — can happen if the
+            # idPath of the root itself doesn't include its own id (rare,
+            # but defend against it). Fetch root directly.
+            root_only_query = (
+                "query GetRoot { "
+                "  objects(condition: { id: " + json.dumps(root_id) + " }, first: 1) { "
+                "    id displayName fqn typeId typeName description "
+                "  } "
+                "}"
+            )
+            resp = self.client.query(root_only_query)
+            root_rows = ((resp or {}).get("data") or {}).get("objects") or []
+            if not root_rows:
+                raise ValueError(
+                    f"Resolved root id {root_id} but no object found"
+                )
+            root_obj = root_rows[0]
+
+        return {"root": root_obj, "descendants": descendants}
 
     # =====================================================================
     # Internal / automation-only methods.
@@ -307,15 +458,7 @@ class SMIPMethods:
             enumeration_value : new enumerationValue, or None to leave
                                 unchanged. THIS IS NOT AN ARRAY INDEX —
                                 it's the stored value defined on the enum
-                                type. Look it up via
-                                get_enum_type_by_display_name(...) and
-                                use `defaultEnumerationValues[i]` paired
-                                with `enumerationNames[i]` (i.e., the
-                                value at the same index as the desired
-                                name). Sending an index that doesn't
-                                appear in `defaultEnumerationValues`
-                                silently no-ops (the server returns no
-                                attribute payload).
+                                type.
 
         Returns the `attribute` payload of the mutation (id, displayName,
         stringValue, enumerationName), or None if the server returned no
@@ -325,7 +468,7 @@ class SMIPMethods:
             mutation UpdateAttribute {
               updateAttribute(input: {
                 id: "<attribute_id>"
-                patch: { stringValue: "...", enumerationValue: "..." }   # only fields actually supplied
+                patch: { stringValue: "...", enumerationValue: "..." }
               }) {
                 clientMutationId
                 attribute { id displayName stringValue enumerationName }
@@ -343,9 +486,6 @@ class SMIPMethods:
                 "at least one of string_value / enumeration_value is required"
             )
 
-        # Build the patch dynamically so we only send fields the caller
-        # actually wants to change. Empty string is a real value (clears
-        # the field); only None means "skip".
         patch_parts = []
         if string_value is not None:
             patch_parts.append("stringValue: " + json.dumps(string_value))
@@ -369,6 +509,123 @@ class SMIPMethods:
         resp = self.client.query(mutation, op_type="mutation")
         payload = ((resp or {}).get("data") or {}).get("updateAttribute") or {}
         return payload.get("attribute")
+
+    # ---------------------------------------------------------------------
+    # export_type_to_smip_exports — pull a tiqType's payload via GraphQL
+    # and write it as JSON into ___SMIP_SAAS_SIDE___/SMIP Exports/<fqn>.json.
+    # The playground's right-pane Export button calls this; the same tool
+    # is useful from SCRIPTS/ for capturing type state into source control.
+    #
+    # This is a pragmatic dump, not a byte-faithful replica of SMIP's
+    # native export format (which also pulls related libraries, relationship
+    # types, etc.). For the round-trip use case — "I changed a type's
+    # scripts in the IDE, drop the new state into source control" — this
+    # captures the fields that matter and skips the rest. Extend the
+    # `_EXPORT_TYPE_FIELDS` literal when more fidelity is needed.
+    # ---------------------------------------------------------------------
+    _EXPORT_TYPE_FIELDS = (
+        "id displayName relativeName description importance fqn"
+    )
+
+    def export_type_to_smip_exports(self, type_id: str = ""):
+        """Export a single tiqType's JSON into `___SMIP_SAAS_SIDE___/SMIP Exports/`.
+
+        DESTRUCTIVE on the local filesystem only (overwrites the target file
+        if it already exists). Does not mutate anything in the SoR.
+
+        Parameters
+        ----------
+        type_id : str
+            tiqType id (digits only). Resolve from a display name via
+            `get_type_by_display_name` if needed.
+
+        Returns
+        -------
+        dict
+            {
+              "path":    "<absolute path of the written file>",
+              "fqn":     ["<library>", "<type>"],
+              "bytes":   <int — file size after write>,
+            }
+
+        One GraphQL round-trip:
+            tiqTypes(condition: { id: "<type_id>" }, first: 1) {
+              <_EXPORT_TYPE_FIELDS>
+            }
+
+        Errors
+        ------
+        ValueError if type_id is missing / non-digit, or if no type
+        resolves to the given id. RuntimeError if the
+        ___SMIP_SAAS_SIDE___/SMIP Exports/ folder can't be created.
+        """
+        type_id = (type_id or "").strip()
+        if not type_id or not type_id.isdigit():
+            raise ValueError(
+                f"type_id must be a node id (digits only); got {type_id!r}"
+            )
+
+        query = (
+            "query ExportType { "
+            "  tiqTypes(condition: { id: " + json.dumps(type_id) + " }, first: 1) { "
+            "    " + self._EXPORT_TYPE_FIELDS + " "
+            "  } "
+            "}"
+        )
+        resp = self.client.query(query)
+        rows = ((resp or {}).get("data") or {}).get("tiqTypes") or []
+        if not rows:
+            raise ValueError(f"No type resolves to id {type_id!r}")
+        type_row = rows[0]
+
+        fqn = type_row.get("fqn") or []
+        # Filename: dot-joined fqn segments + .json. Sanitize for filesystem
+        # safety (the SoR-side validator already rejects most exotic chars,
+        # but a defensive substitution costs nothing).
+        if fqn:
+            stem = ".".join(fqn)
+        else:
+            stem = f"type_{type_id}"
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]", "_", stem) or f"type_{type_id}"
+        filename = safe_stem + ".json"
+
+        exports_dir = _PROJECT_ROOT / "___SMIP_SAAS_SIDE___" / "SMIP Exports"
+        try:
+            exports_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise RuntimeError(f"Could not create exports dir: {e}") from e
+
+        # Compose the file payload. Header `meta` borrows the shape of
+        # SMIP's native export so anyone opening the file can tell at a
+        # glance what it is, when it was written, and which type it
+        # captures.
+        payload = {
+            "meta": {
+                "file_version":   "0.1",
+                "exporter":       "vibecon-smip / SMIPMethods.export_type_to_smip_exports",
+                "export_node_fqn": fqn,
+                "export_timestamp": datetime.datetime.now(
+                    datetime.timezone.utc
+                ).isoformat(),
+                "note": (
+                    "Pragmatic single-type export. Not byte-faithful to "
+                    "SMIP's native multi-type / library export format. "
+                    "Extend SMIPMethods._EXPORT_TYPE_FIELDS to widen."
+                ),
+            },
+            "types": [type_row],
+        }
+
+        out_path = exports_dir / filename
+        out_path.write_text(
+            json.dumps(payload, indent=2, default=str),
+            encoding="utf-8",
+        )
+        return {
+            "path":  str(out_path),
+            "fqn":   fqn,
+            "bytes": out_path.stat().st_size,
+        }
 
 
 __all__ = ["SMIPMethods"]

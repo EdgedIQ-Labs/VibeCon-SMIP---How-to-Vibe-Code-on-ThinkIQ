@@ -127,14 +127,14 @@ Not like:
 client.query("query { ... }")
 ```
 
-Pages live under `PAGES/<NN>_<page_name>/` (folder per page, `.py`
+Twins live under `BROWSER_SCRIPTS/<page_name>/` (page-level) or `DISPLAY_SCRIPTS/<page_name>/` (node-bound) (folder per page, `.py`
 launcher + `.html` Vue file). Scripts live directly under `SCRIPTS/` as
 `<NN>_<task>.py`. Both are vibe-code-friendly: each runs in its own
 process, the backend is unaffected, and a buggy page can't break sibling
 pages. See [ARCHITECTURE](ARCHITECTURE.md) for the full launcher pattern.
 
 **Worked example to point your LLM at.** One sample page ships in
-`PAGES/` to set the shape:
+`BROWSER_SCRIPTS/` and `DISPLAY_SCRIPTS/` to set the shape:
 
 - `01_list_libraries/` — minimal. One fetch on mount, render an `id` /
   `displayName` table. Two files: `list_libraries.py` (launcher on a
@@ -145,7 +145,7 @@ pages. See [ARCHITECTURE](ARCHITECTURE.md) for the full launcher pattern.
 
 For a richer shape — interactive controls, client-side caching, no
 round-tripping per keystroke — point your LLM at the SMIP-side artifact
-at `___SMIP_SAAS_SIDE___/Sample Scripts/unit_converter.html`. It's the
+at `___SMIP_SAAS_SIDE___/SMIP Browser Scripts/unit_converter.html`. It's the
 end state of the round-trip described in step 7 below: the
 `get_quantities_with_units` tool you built in
 [QUICKSTART step 5](QUICKSTART.md), plus a vibe-coded Vue page with two
@@ -159,7 +159,7 @@ prompt your LLM in plain language. Something like:
 > Build me a page that uses the `<tool_name>` tool. Make it look like
 > `01_list_libraries`.
 
-That's enough. The LLM picks up the `PAGES/` convention, the launcher
+That's enough. The LLM picks up the `BROWSER_SCRIPTS/` and `DISPLAY_SCRIPTS/` conventions, the launcher
 pattern, the Vue 3 + CDN choice, and the thin-shell-around-a-tool-call
 shape from the existing samples and the architecture doc. No need to
 hand it file paths or stack choices.
@@ -194,7 +194,7 @@ template. Use whichever surface you have wired up.
 Once a page or script earns its keep — meaning it's done a job a few times
 and you want it on the SMIP side rather than running on localhost — port
 it to one of the vendored Joomla/PHP browser-script templates under
-`___SMIP_SAAS_SIDE___/Sample Scripts/`:
+`___SMIP_SAAS_SIDE___/SMIP Browser Scripts/  (and SMIP Display Scripts/)`:
 
 | Sample                          | Use it for                                          |
 | ------------------------------- | --------------------------------------------------- |
@@ -339,8 +339,8 @@ and how to swap in `tiqJSHelper.invokeGraphQLAsync`.
 > Create a browser script I can copy into the SMIP.
 
 That's the literal prompt that produced
-`___SMIP_SAAS_SIDE___/Sample Scripts/unit_converter.html` from a
-localhost `PAGES/02_unit_converter/` Vue page that lived in this repo
+`___SMIP_SAAS_SIDE___/SMIP Browser Scripts/unit_converter.html` from a
+localhost `BROWSER_SCRIPTS/unit_converter/` Vue page that lived in this repo
 when these docs were written — since deleted to leave the round-trip as
 an exercise (see the meta note below). The LLM does the templated
 substitution, drops the Vue CDN tag, scopes the CSS, emits the right
@@ -364,17 +364,17 @@ If it doesn't work first try, the usual suspects are:
   TOOL_REGISTRY's query is the source of truth on both sides).
 - A CSS rule conflicts with the SMIP's host stylesheet (most common).
 
-Iterate locally first when you hit one of these — `PAGES/` reloads on
-file save, the SMIP-side IDE doesn't. Fix in `PAGES/`, re-port, re-paste.
+Iterate locally first when you hit one of these — `BROWSER_SCRIPTS/` and `DISPLAY_SCRIPTS/` reload on
+file save, the SMIP-side IDE doesn't. Fix in `BROWSER_SCRIPTS/` or `DISPLAY_SCRIPTS/`, re-port, re-paste.
 
 > **⚡ Meta note: the unit-converter round-trip is vibe-coded
 > end-to-end.** The artifact you can still see in the repo —
-> `___SMIP_SAAS_SIDE___/Sample Scripts/unit_converter.html` — is the
+> `___SMIP_SAAS_SIDE___/SMIP Browser Scripts/unit_converter.html` — is the
 > SMIP-side output of the full step 1–7 loop. The Python tool behind
 > it is the same `get_quantities_with_units` you build in
 > [QUICKSTART step 5](QUICKSTART.md) by pasting a single prompt;
 > the localhost Vue page that fed the round-trip
-> (originally at `PAGES/02_unit_converter/`) was deleted from the
+> (originally at `BROWSER_SCRIPTS/unit_converter/`) was deleted from the
 > starter once it had served its purpose, but rebuilding it from the
 > tool is itself a one-prompt task following the loop above. A few
 > minor human course corrections kept the UX honest ("default to

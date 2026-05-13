@@ -74,14 +74,14 @@ The Flask app is what serves the docs page, the chat UIs, and the
 imports the same Flask `app` and mounts itself on its own port):
 
 ```
-python PAGES/01_list_libraries/list_libraries.py
+python PLAYGROUND/playground.py
 ```
 
 Then open <http://localhost:5101/list_libraries> in your browser.
 
 You should see the same library rows you got from the script in step 2,
 rendered as an HTML table. Same data, browser shape — that confirms the
-PAGES launcher pattern works (sys.path, route decoration, same-origin
+PLAYGROUND launcher pattern works (sys.path, route decoration, same-origin
 fetch through `/api/tool/get_libraries`, Vue 3 from CDN).
 
 If the page loads but the table is empty or shows an error, open the
@@ -89,7 +89,7 @@ browser devtools console — the page logs the failed `fetch` clearly.
 
 > **You can stop here and still have a useful VibeCon-SMIP.** Steps 1–3
 > give you transport, a tool registry, the Flask app's docs page, the
-> `/api/tool/<name>` dispatch endpoint, and the PAGES + SCRIPTS workflow.
+> `/api/tool/<name>` dispatch endpoint, and the BROWSER_SCRIPTS/DISPLAY_SCRIPTS + SCRIPTS workflow.
 > That's enough to build automation against your SMIP indefinitely.
 > Steps 4 (the agentic chat agent) and the bonus MCP server section
 > below are **optional layers** — useful, but not required for the
@@ -190,7 +190,7 @@ intent ("I want to build a unit converter"); the edits are derived.
 Because this is the exact tool that powers the worked unit-converter
 round-trip referenced in [WORKFLOW.md](WORKFLOW.md) step 7 — the
 SMIP-side end state lives at
-`___SMIP_SAAS_SIDE___/Sample Scripts/unit_converter.html`. The richer
+`___SMIP_SAAS_SIDE___/SMIP Browser Scripts/unit_converter.html`. The richer
 query is what the converter consumes: nested units with offset and
 multiplier so the math can happen client-side. Building it here
 threads the same tool name end-to-end through the docs.*)

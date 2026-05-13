@@ -128,6 +128,77 @@ def call_tool(name: str):
 
 
 # ---------------------------------------------------------------------------
+# SMIP-side runtime emulation — the two endpoints the DISPLAY_SCRIPTS shim
+# (`tiq_runtime.js`) consumes to make a SMIP browser-script body run unmodified
+# on localhost. Display scripts that hardcode raw GraphQL via
+# `tiqJSHelper.invokeGraphQLAsync(...)` end up here at /api/graphql; the
+# SMIP-only-link toast in the shim reads the tenant origin from
+# /api/smip_origin so it can rewrite /applications/* links to the SMIP host
+# when copying to clipboard.
+#
+# Both routes are intentionally OUTSIDE the {ok, data} / {ok, error} envelope
+# pattern used everywhere else in this file:
+#
+#   /api/graphql   — returns the raw GraphQL response { data, errors } so SDK
+#                    code that does `resp.data.X` and `resp.errors` works
+#                    identically to the way it would in the SMIP runtime.
+#                    Wrapping it here would force every display script body to
+#                    branch on local vs. SMIP, defeating the whole point.
+#   /api/smip_origin — returns {ok, data: {origin}} like other tool calls,
+#                    because the shim reads it as JSON and only uses
+#                    `env.data.origin`. Either shape works here; we use the
+#                    standard envelope for consistency.
+# ---------------------------------------------------------------------------
+
+@app.route('/api/smip_origin', methods=['GET'])
+def smip_origin():
+    """Return the configured SMIP tenant origin as `{origin: 'https://...'}`.
+
+    Used by the shim's link-interception layer to rewrite SMIP-only URLs (e.g.
+    `/applications/ide?...`) to absolute SMIP URLs when copied to the
+    clipboard from a localhost twin.
+    """
+    try:
+        from urllib.parse import urlsplit
+        parsed = urlsplit(client.endpoint or "")
+        if not parsed.scheme or not parsed.netloc:
+            return jsonify({'ok': False, 'error': 'graphQlEndpoint not configured'}), 500
+        return _ok({'origin': f"{parsed.scheme}://{parsed.netloc}"})
+    except Exception as e:
+        return _err(e)
+
+
+@app.route('/api/graphql', methods=['POST'])
+def graphql_passthrough():
+    """Forward a raw GraphQL query/variables to SMIP and return the response.
+
+    Body: {"query": "<gql string>", "variables": {...}?}
+    Returns the raw GraphQL envelope { data, errors } unmodified, so display
+    scripts using `tiqJSHelper.invokeGraphQLAsync` see byte-identical shapes
+    to what the SMIP runtime gives them.
+
+    This is the escape hatch for display scripts that haven't (yet) had their
+    queries lifted into TOOL_REGISTRY entries. Long-term, every query a script
+    runs should have a named tool peer; in the short term, this keeps
+    SMIP-side scripts running on localhost without forcing an extraction pass
+    first.
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        query = body.get('query')
+        if not query or not isinstance(query, str):
+            return jsonify({'ok': False, 'error': 'query (string) is required'}), 400
+        variables = body.get('variables')
+        if variables is not None and not isinstance(variables, dict):
+            return jsonify({'ok': False, 'error': 'variables must be an object'}), 400
+        # SMIPClient.query validates op_type but the wire payload is identical
+        # for queries and mutations (SMIP infers op type from the query string).
+        return jsonify(client.query(query, variables=variables))
+    except Exception as e:
+        return _err(e)
+
+
+# ---------------------------------------------------------------------------
 # Chat endpoint — agentic loop backed by Azure OpenAI
 # ---------------------------------------------------------------------------
 
