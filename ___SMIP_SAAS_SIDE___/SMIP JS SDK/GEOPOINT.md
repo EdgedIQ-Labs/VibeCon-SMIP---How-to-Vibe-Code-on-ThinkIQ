@@ -6,7 +6,7 @@ schema as a plain `String`, but the *contents* of that string are PostGIS
 Every read of a campus location attribute hands you back something like:
 
 ```
-0101000020E6100000F4FDD478E9E65EC0A0F831E6AECF4240
+0101000020E610000050FC1873D79A5EC0D0D556EC2FE34240
 ```
 
 This document describes the format so SDK consumers know what to do with it,
@@ -69,7 +69,7 @@ and M bits and skip past their bytes rather than mis-aligning the read.
 Anthropic SF HQ at (37.7749 N, -122.4194 W) encodes as:
 
 ```
-0101000020E6100000F4FDD478E9E65EC0A0F831E6AECF4240
+0101000020E610000050FC1873D79A5EC0D0D556EC2FE34240
 ```
 
 Decoded byte-by-byte:
@@ -78,8 +78,8 @@ Decoded byte-by-byte:
 01                                        ← little-endian
 01000020                                  ← uint32 LE = 0x20000001  → POINT + SRID flag
 E6100000                                  ← uint32 LE = 0x000010E6  → SRID 4326
-F4FDD478E9E65EC0                          ← float64 LE = -122.4194  → longitude (X)
-A0F831E6AECF4240                          ← float64 LE =   37.7749  → latitude  (Y)
+50FC1873D79A5EC0                          ← float64 LE = -122.4194  → longitude (X)
+D0D556EC2FE34240                          ← float64 LE =   37.7749  → latitude  (Y)
 ```
 
 A round-trip parse → format on this string must be byte-identical to within
