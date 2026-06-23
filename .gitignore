@@ -13,6 +13,9 @@ __pycache__/
 venv/
 env/
 
+# Artifacts
+Artifacts/
+
 # IDE / OS
 .vscode/
 .idea/
