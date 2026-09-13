@@ -301,4 +301,6 @@ back the time you put into it.) From here:
   GraphQL), validating via the chat agent, the round-trip back to SMIP-side
   scripts, the JS SDK parity convention.
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — what's where and why. Reference
-  for when you need to understand a piece of the wiring.
+  for when you need to understand a piece of the wiring, including the
+  agent layer under `.claude/` (four realm subagents and the
+  `smip-script-sync` skill) if you work on the repo with Claude Code.

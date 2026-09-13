@@ -354,6 +354,29 @@ Then ship it:
 3. Confirm the page renders and behaves identically to the localhost
    version.
 
+The Save in step 2 is not a formality. A platform script executes as a
+file on disk; the IDE Save is what writes that file. Writing the script
+over GraphQL only updates the database row, and the live page keeps
+running the old code until someone saves in the IDE.
+
+Once the script exists on the tenant you can replace the copy-paste with
+the `smip-script-sync` skill (`.claude/skills/smip-script-sync/`). It
+diffs your paste target against what is deployed, and with `--apply`
+backs up the deployed body, writes the row and prints the IDE URL:
+
+```
+python .claude/skills/smip-script-sync/smip_script_sync.py bind --dir "___SMIP_SAAS_SIDE___/SMIP Browser Scripts" --apply   # once per project
+python .claude/skills/smip-script-sync/smip_script_sync.py push --dir "___SMIP_SAAS_SIDE___/SMIP Browser Scripts"           # dry run: the diff
+python .claude/skills/smip-script-sync/smip_script_sync.py push --dir "___SMIP_SAAS_SIDE___/SMIP Browser Scripts" --apply   # stage; then open the IDE URL and Save
+python .claude/skills/smip-script-sync/smip_script_sync.py status --dir "___SMIP_SAAS_SIDE___/SMIP Browser Scripts"         # anything still "NEEDS IDE SAVE"?
+```
+
+It reports "DB UPDATED - NOT YET LIVE" on purpose. Step 2 is still yours.
+The `display-and-browser-scripts` agent has this skill preloaded and will
+run the dry run for you, but it pushes only when you ask for the push.
+See [ARCHITECTURE.md](ARCHITECTURE.md#getting-a-script-onto-the-tenant-a-graphql-write-is-not-a-deploy)
+for why.
+
 If it doesn't work first try, the usual suspects are:
 
 - The SMIP runtime's Vue version doesn't support a feature your
@@ -365,7 +388,7 @@ If it doesn't work first try, the usual suspects are:
 - A CSS rule conflicts with the SMIP's host stylesheet (most common).
 
 Iterate locally first when you hit one of these — `BROWSER_SCRIPTS/` and `DISPLAY_SCRIPTS/` reload on
-file save, the SMIP-side IDE doesn't. Fix in `BROWSER_SCRIPTS/` or `DISPLAY_SCRIPTS/`, re-port, re-paste.
+file save, the SMIP-side IDE doesn't. Fix in `BROWSER_SCRIPTS/` or `DISPLAY_SCRIPTS/`, re-port, re-paste (or re-push and Save).
 
 > **⚡ Meta note: the unit-converter round-trip is vibe-coded
 > end-to-end.** The artifact you can still see in the repo —

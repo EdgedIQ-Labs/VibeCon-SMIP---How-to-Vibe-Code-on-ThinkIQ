@@ -7,6 +7,8 @@ What it assembles, from the repo:
   .claude/agents/*.md   -> <plugin>/agents/*.md            (copied verbatim; the
                            frontmatter — name/description/tools/model — is already
                            plugin-compatible, so no transform is needed)
+  .claude/skills/<n>/   -> <plugin>/skills/<n>/            (copied verbatim, whole
+                           folder: SKILL.md plus any bundled scripts/reference files)
   CLAUDE.md             -> <plugin>/skills/operating-guide/SKILL.md
                            (plugins don't auto-load a CLAUDE.md memory file, so the
                            operating guide is shipped as a model-invocable skill)
@@ -21,6 +23,7 @@ Output layout (under Artifacts/, which is gitignored):
       <plugin>/
         .claude-plugin/plugin.json             # the manifest (only `name` is required)
         agents/*.md                            # the four realm subagents
+        skills/<name>/...                      # each .claude/skills/<name>/ folder
         skills/operating-guide/SKILL.md        # CLAUDE.md, as a skill
 
 Load it (Claude Desktop or CLI):
@@ -56,6 +59,7 @@ DEFAULT_DESCRIPTION = (
 )
 
 AGENTS_SRC = REPO / ".claude" / "agents"
+SKILLS_SRC = REPO / ".claude" / "skills"
 CLAUDE_MD = REPO / "CLAUDE.md"
 
 
@@ -94,6 +98,27 @@ def write_agents(agents: list[Path], plugin_dir: Path) -> None:
     for a in agents:
         # Verbatim copy — agent frontmatter is already plugin-compatible.
         shutil.copy2(a, dst / a.name)
+
+
+def collect_skills() -> list[Path]:
+    """Every .claude/skills/<name>/ folder that has a SKILL.md. Optional."""
+    if not SKILLS_SRC.is_dir():
+        return []
+    return sorted(p for p in SKILLS_SRC.iterdir()
+                  if p.is_dir() and (p / "SKILL.md").is_file())
+
+
+def write_skills(skills: list[Path], plugin_dir: Path) -> None:
+    """Copy each skill folder whole, so bundled scripts and reference files
+    keep the relative paths SKILL.md points at. `operating-guide` is reserved
+    for the CLAUDE.md wrapper below."""
+    dst = plugin_dir / "skills"
+    dst.mkdir(parents=True, exist_ok=True)
+    for s in skills:
+        if s.name == "operating-guide":
+            sys.exit("error: .claude/skills/operating-guide collides with the CLAUDE.md skill")
+        shutil.copytree(s, dst / s.name,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".smip_sync"))
 
 
 def write_operating_guide(plugin_dir: Path, plugin_name: str) -> bool:
@@ -177,12 +202,15 @@ def main() -> None:
     author = git_author()
     agents = collect_agents()
     write_agents(agents, plugin_dir)
+    skills = collect_skills()
+    write_skills(skills, plugin_dir)
     has_guide = write_operating_guide(plugin_dir, args.name)
     write_plugin_manifest(plugin_dir, args.name, args.version, args.description, author)
     write_marketplace(market_root, args.marketplace, args.name, args.description, author)
 
     print(f"Built plugin '{args.name}' -> {plugin_dir}")
     print(f"  agents : {len(agents)}  ({', '.join(a.stem for a in agents)})")
+    print(f"  skills : {len(skills)}  ({', '.join(s.name for s in skills) or 'none'})")
     print(f"  guide  : {'operating-guide skill (from CLAUDE.md)' if has_guide else 'SKIPPED — no CLAUDE.md'}")
     print(f"  market : {market_root / '.claude-plugin' / 'marketplace.json'}")
 

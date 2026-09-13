@@ -70,6 +70,15 @@ ___SMIP_SAAS_SIDE___/   reference material + SMIP-side libraries
                              DevCon-SMIP). Edits go upstream first.
   SMIP Display Scripts/      Paste targets for DISPLAY_SCRIPTS/ twins.
   SMIP Browser Scripts/      Paste targets for BROWSER_SCRIPTS/ twins.
+
+.claude/            the agent side of the template (see "Agents and skills")
+  agents/*.md                Four realm subagents, one per folder group above.
+  skills/smip-script-sync/   Moves paste targets and library scripts to and
+                             from the tenant over GraphQL (list, pull, bind,
+                             push, status). Knows a GraphQL write is not a deploy.
+
+CLAUDE.md           operating guide the agents load; realm map + run commands
+build_plugin.py     packages .claude/ + CLAUDE.md as an installable Claude plugin
 ```
 
 The directional convention: data flows in via SMIP_IO, business semantics
@@ -156,7 +165,9 @@ Adding a new twin:
 2. Create `DISPLAY_SCRIPTS/<folder>/` or `BROWSER_SCRIPTS/<folder>/` with
    `__init__.py`, `component.py`, and `local_twin.html`.
 3. Add the SMIP-side paste target under `___SMIP_SAAS_SIDE___/SMIP
-   Display Scripts/<folder>.html` (or `SMIP Browser Scripts/`).
+   Display Scripts/<folder>.html` (or `SMIP Browser Scripts/`). Once the
+   script exists on the tenant, `smip-script-sync bind` ties the file to
+   it by id (see "Getting a script onto the tenant").
 4. Register the module in `PLAYGROUND/playground.py`
    (`DISPLAY_SCRIPT_MODULES` or `BROWSER_SCRIPT_MODULES`).
 5. For display scripts, add a type binding to `DISPLAY_SCRIPTS_BY_TYPE`
@@ -250,6 +261,61 @@ Deleting a type is a hard cascade — instances typed as it get deleted
 with no prompt. The reliable recovery surface is a peer SMIP tenant
 held as a reference mirror; capture values from there and rebuild.
 
+## Getting a script onto the tenant (a GraphQL write is not a deploy)
+
+Every platform script exists twice: as a row in Postgres and as a file on
+disk inside the Joomla host, named `{relativeName}_{id}.php`. **The runtime
+executes the file.** GraphQL's `updateScript` only rewrites the row; the
+file is rewritten when someone opens the script in the platform IDE and
+presses **Save**. Until then the live page keeps running the old code, and
+nothing visible over GraphQL tells you so.
+
+That is why "paste into the IDE and Save" works and why a bare GraphQL
+push does not. The `smip-script-sync` skill under
+`.claude/skills/smip-script-sync/` turns the paste into a staging step:
+
+| Command | Does | Writes to |
+| --- | --- | --- |
+| `list` | Inventory of every script on the tenant (library, type and object hosted). | nothing |
+| `pull` | Copy deployed scripts into a folder, with an id sidecar per file. | local folder |
+| `bind` | Match local paste targets to deployed scripts by content, write the id sidecars. | local sidecars |
+| `push` | Diff local files against the tenant. `--apply` backs up the deployed body, writes the row, prints the IDE URL. Reports **"DB UPDATED - NOT YET LIVE"**. | tenant DB |
+| `status` | Which staged scripts still need an IDE Save, inferred from write order. | nothing |
+
+`push` is a dry run unless you pass `--apply`. Run `bind --apply` once per
+project so files are matched by id rather than by content. The evidence
+for the row-vs-file behaviour and the PHP-side facts live in the skill's
+`reference/platform-notes.md`.
+
+## Agents and skills
+
+The template ships with a Claude Code agent layer under `.claude/`. It is
+optional: everything above runs without it. It exists so that an LLM
+working in the repo stays inside one folder group at a time and follows
+the write-safety rules in [CLAUDE.md](../CLAUDE.md), which is the
+authoritative version of this table.
+
+| Agent | Owns | Reach for it when |
+| --- | --- | --- |
+| `smip-methods-and-tools` | `SMIP_IO/`, `SMIP_MCP/`, `SMIP_API/` | Adding or changing a tool, a `SMIPMethods` method, the GraphQL behind it, or the chat/MCP exposure. Sole writer of `smip_methods.py`. |
+| `script-writer` | `SCRIPTS/` | Headless automation against the system of record: migrations, batch writes, audits. Requests missing methods from the agent above rather than editing the SDK. |
+| `display-and-browser-scripts` | `DISPLAY_SCRIPTS/`, `BROWSER_SCRIPTS/`, `PLAYGROUND/`, `_shims/`, the two paste-target folders | Building or editing a twin, and translating it to and from its paste target. |
+| `js-sdk-compiler` | `SMIP JS SDK/`, `JS SDK Template/` | Mirroring a Python tool onto the JS side and recompiling the library export JSON. |
+
+Two rules cross every realm. `SMIP_IO/smip_methods.py` has one writer.
+A tool that should round-trip to a SMIP-side script is mirrored into the
+JS SDK with the same name, parameters and return shape.
+
+Skills are reusable procedures an agent loads on demand. There is one
+today, `smip-script-sync` (previous section). It is preloaded into the
+two agents that touch scripts on the tenant, `display-and-browser-scripts`
+and `js-sdk-compiler`. Its `push --apply` runs only on an explicit request
+from you, never as a follow-on to an edit.
+
+`python build_plugin.py` packages the agents, the skills and CLAUDE.md into
+a Claude plugin under `Artifacts/`, so the same agent layer can be
+installed into Claude Code or Claude Desktop for another project.
+
 ## Tools available today
 
 | Tool | What it does | LLM-exposed |
@@ -279,7 +345,7 @@ file-writing utilities.
 - **Empty input means "all".** Default pattern for filter parameters.
 - **Vibe-code twins freely.** Edit `local_twin.html`, refresh the
   iframe in the playground, see real data. Paste back into SMIP when
-  ready.
+  ready, or stage it with `smip-script-sync push` and Save in the IDE.
 - **Numbered scripts under `SCRIPTS/`.** Headless run-and-exit; not
   pages, not long-running services.
 - **The base library is locked.** Extend in your own library; don't

@@ -90,3 +90,13 @@ python SMIP_MCP/smip_mcp_server.py     # MCP server (stdio)
 - **Base ThinkIQ libraries are `locked: true`.** You can't attach a script or
   attribute to a base type. Derive a sub-type in your own unlocked library,
   attach there, and re-type the instances. (README has the three-beat detail.)
+
+- **A GraphQL write to a script is not a deploy.** Platform scripts execute as
+  files on disk (`{relativeName}_{id}.php`); `updateScript` only writes the
+  Postgres row, and the file is rewritten only by an IDE **Save**. The
+  `smip-script-sync` skill (`.claude/skills/smip-script-sync/`) is the one way
+  to move paste targets and library scripts to and from the tenant: `list`,
+  `pull`, `bind`, `push` (dry-run by default, backs up first, reports
+  "DB UPDATED - NOT YET LIVE"), `status`. Pushing needs an explicit request
+  every time; never push as a follow-on to an edit. Its
+  `reference/platform-notes.md` holds the evidence and the PHP-side facts.

@@ -73,6 +73,22 @@ is where you'd start.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — what's where and why.
   Reference for the tool registry mechanics, the script-flavor
   conventions, and the design choices that thread through the codebase.
+  Also covers the agent layer under `.claude/`: four realm subagents,
+  one per folder group, and the `smip-script-sync` skill that moves
+  scripts to and from the tenant.
+
+## Working with an agent
+
+The repo ships with a Claude Code agent layer under `.claude/`. Four
+subagents each own one folder group (tools/SDK, `SCRIPTS/`, the twins
+and playground, the JS SDK) and stay out of the others'; `CLAUDE.md` is
+the operating guide they load, with the realm map and the write-safety
+rules. One skill, `smip-script-sync`, lists, pulls, diffs and stages
+platform scripts against the tenant. It knows that a GraphQL write is not
+a deploy: a script runs from a file on disk that only an IDE **Save**
+rewrites, so the skill reports "DB UPDATED - NOT YET LIVE" and hands you
+the IDE URL. Everything in the repo also works with no agent at all.
+`python build_plugin.py` packages the layer as a Claude plugin.
 
 ## A note on adding a SMIP display script
 
@@ -84,7 +100,8 @@ directly to a base-library type. The three-beat workaround:
    the base attribute schema (Enable QR Code Routing, Routing Template,
    etc.) for free.
 2. **Attach** your Display Script to the derived type and edit it in the
-   SMIP IDE (or vibe-edit the localhost twin and paste).
+   SMIP IDE (or vibe-edit the localhost twin, then paste or
+   `smip-script-sync push`, and Save in the IDE either way).
 3. **Re-type** the four shipped Application instances (Details, Model
    Explorer, Timeseries Dashboard, Trend) to your derived type so the
    script fires when they're opened.
