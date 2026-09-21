@@ -100,3 +100,14 @@ python SMIP_MCP/smip_mcp_server.py     # MCP server (stdio)
   "DB UPDATED - NOT YET LIVE"), `status`. Pushing needs an explicit request
   every time; never push as a follow-on to an edit. Its
   `reference/platform-notes.md` holds the evidence and the PHP-side facts.
+
+- **Stamp every push, and report only what you read back.** The human who
+  presses Save forgets whether they did; the stamp line the tool injects
+  (`--stamp`, always) is how they compare the staged time in the IDE header
+  with their own Save. After `--apply` the tool re-fetches the script and
+  prints `verified by read-back: ... stamp on line N`; quote that line, and
+  quote `VERIFY FAILED` / `NO STAMP` just as plainly. Never describe the
+  intent of a write as its result. Scripts with no `<?php` opener (pure
+  `<script>` library bodies) get the stamp after the `<script>` tag; the
+  tool refuses to write if it finds nowhere to put it. If only the stamp is
+  missing, restage with `--force --name "<displayName>"`.

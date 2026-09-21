@@ -80,6 +80,20 @@ mutation UpdateScript($input: UpdateScriptInput!) {
 
 IDE URL for a script: `https://<tenant>/applications/ide?node_ids=<id>&selected=<id>`.
 
+Full-page render of a DISPLAY script on a node (what the Overview page's
+display-script links open, and the standard header's "open in tab" link):
+
+    /index.php?option=com_thinkiq&task=previewScript
+        &script_name=<relativeName>_<scriptId>.php   <- the DISK file name, .php included
+        &script_id=<scriptId>
+        &parent_id=<node.partOfId>                   <- the NODE's parent object, not a type
+        &node_id=<nodeId>
+
+Verified 2026-09-21 on thermalworks: `script_name` without `.php` routes to a
+blank landing page, and the `std_inputs.script_name` the PHP Context injects
+arrives WITHOUT the extension - so build the name from GraphQL
+(`script(id){relativeName}` + id + `.php`) rather than trusting the context.
+
 ## What the PHP side exposes
 
 Inside a script running on the platform, `TiqUtilities\Model\Script` has the

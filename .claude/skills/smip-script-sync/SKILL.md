@@ -41,6 +41,25 @@ Therefore:
   cannot are in [reference/platform-notes.md](reference/platform-notes.md).
   Read it before changing the tool or arguing with its output.
 
+## Stamp and verify: the two habits that keep humans and agents honest
+
+The person who presses Save is a human. Humans forget whether they saved,
+and agents forget to check. Two rules close that gap:
+
+1. **Always stage with `--stamp`.** The marker line (`// staged by
+   smip-script-sync <utc>`) is the only thing in the IDE that tells the human
+   when the body under their cursor was staged, so they can compare it with
+   their own Save. A push without it is a push the human cannot audit.
+2. **Never report a tenant state you have not read back.** After every
+   `--apply` the tool re-fetches the script and prints
+   `verified by read-back: body matches local; stamp on line N: ...`. Quote
+   that line to the user. If the tool prints `VERIFY FAILED` or
+   `NO STAMP`, say exactly that. Do not paraphrase the intent of the command
+   ("restaged with a stamp") as its result; on 2026-09-13 an earlier version
+   of this tool silently skipped the stamp on a script with no `<?php` line
+   and the agent reported it as stamped anyway. `status` now shows a stamp
+   column (`line N, ours` / `DIFFERENT` / `MISSING`) for the same reason.
+
 ## Consent rule
 
 **Never run `push --apply` as a follow-on to editing a file.** Editing a local
@@ -107,8 +126,12 @@ python .../smip_script_sync.py status --dir "..."              # confirm nothing
 ```
 
 Optional `--stamp` inserts a one-line `// staged by smip-script-sync <utc>`
-marker after `<?php` so the staged version is self-describing in the IDE. The
-comparison ignores that line, so stamped scripts still read as up to date.
+marker after `<?php`, or after the first `<script>` tag when the script has
+no PHP opener (pure JS library bodies), or as an HTML comment on line 1 when
+it has neither. The user reads it in the IDE header to check that their Save
+came after the staging. The comparison ignores that line, so stamped scripts
+still read as up to date; to restage only to add a stamp, use
+`--force --name "<displayName>"`.
 
 **Round-trip an edit someone made in the IDE**
 

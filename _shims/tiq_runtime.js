@@ -5,11 +5,14 @@
  * browser-script would see when running inside Joomla, but routed through
  * the Flask app this repo already exposes:
  *
- *   window.tiqContext               <- { std_inputs: { node_id, script_id } }
+ *   window.tiqContext               <- { std_inputs: { node_id, script_id,
+ *                                                      parent_id, script_name } }
  *                                     populated from URL params, so the
  *                                     local twin's `context.std_inputs.node_id`
  *                                     references resolve the same way they
- *                                     do in SMIP.
+ *                                     do in SMIP. parent_id / script_name are
+ *                                     optional and feed the standard header's
+ *                                     "open in tab" link when supplied.
  *
  *   window.tiqJSHelper              <- { invokeGraphQLAsync(query, variables?) }
  *                                     posts to /api/graphql; returns the
@@ -47,8 +50,13 @@
   const params = new URLSearchParams(window.location.search);
   const nodeId   = params.get("node_id")   || "";
   const scriptId = params.get("script_id") || "0";
+  // Optional; the twins derive both over GraphQL when absent, exactly as
+  // they do on SMIP where the PHP Context is not documented to carry them.
+  const parentId   = params.get("parent_id")   || "";
+  const scriptName = params.get("script_name") || "";
   window.tiqContext = window.tiqContext || {
-    std_inputs: { node_id: nodeId, script_id: scriptId },
+    std_inputs: { node_id: nodeId, script_id: scriptId,
+                  parent_id: parentId, script_name: scriptName },
   };
   // SMIP's PHP wrapper also injects $user via json_encode; local twins
   // don't have a real user, but the binding has to resolve so the Vue
@@ -259,9 +267,13 @@
   })();
 
   // Match any /applications/* path (covers /applications/ide,
-  // /applications/model-explorer, and any future SMIP UI route).
+  // /applications/model-explorer, and any future SMIP UI route), plus the
+  // Joomla component routes the standard header's "open in tab" link uses
+  // (/index.php?option=com_thinkiq&task=previewScript...).
   function isSmipOnlyHref(href) {
-    return typeof href === "string" && href.indexOf("/applications/") === 0;
+    if (typeof href !== "string") return false;
+    return href.indexOf("/applications/") === 0
+        || href.indexOf("/index.php?option=com_thinkiq") === 0;
   }
 
   // Inject base + toast styling once.

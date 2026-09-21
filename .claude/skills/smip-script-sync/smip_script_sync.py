@@ -91,8 +91,12 @@ DEFAULT_DIR = Path("___SMIP_SAAS_SIDE___") / "SMIP Display Scripts"
 # staged version is self-describing in the IDE. The old TW wording is kept in
 # the regex so already-stamped tenant scripts still compare equal.
 STAMP_PREFIX = "// staged by smip-script-sync "
+STAMP_HTML_PREFIX = "<!-- staged by smip-script-sync "
+# Matches the JS/PHP comment form and the HTML comment form (used when a
+# script has neither `<?php` nor `<script>` to hang a `//` comment on).
 STAMP_RE = re.compile(
-    r"^\s*//\s*(staged by smip-script-sync|claude was here - staged) .*$")
+    r"^\s*(//\s*(staged by smip-script-sync|claude was here - staged) .*"
+    r"|<!--\s*staged by smip-script-sync .*-->\s*)$")
 
 ENV_KEYS = {
     "graphQlEndpoint": "SMIP_GRAPHQL_ENDPOINT",
@@ -221,6 +225,23 @@ class Smip:
             raise RuntimeError("updateScript returned no script")
         return script
 
+    def script_source(self, script_id: str) -> dict:
+        """Fresh read of ONE script's body and timestamp, straight after a
+        write. Never trust the mutation payload or the pre-push snapshot for
+        verification - read back what the tenant actually holds."""
+        try:
+            data = self.query(
+                "query ($id: BigInt!) { script(id: $id) { id script updatedTimestamp } }",
+                {"id": str(script_id)})
+            if data.get("script"):
+                return data["script"]
+        except Exception:  # noqa: BLE001 - fall through to the list query
+            pass
+        for s in self.scripts(with_source=True):
+            if str(s.get("id")) == str(script_id):
+                return s
+        return {}
+
 
 # --------------------------------------------------------------------------
 # helpers
@@ -234,12 +255,32 @@ def normalise(text: str | None) -> list[str]:
 
 
 def stamped(text: str, when: str) -> str:
+    """Insert the staging marker where a comment is legal.
+
+    Preference order: after the first `<?php` line (PHP scripts), else after
+    the first `<script>` tag (pure JS library bodies such as the JS SDK's
+    API Tools, which start with `<script>` and never open PHP), else as an
+    HTML comment on line 1. Any earlier stamp is removed first.
+    """
     lines = [l for l in text.replace(CRLF, LF).split(LF) if not STAMP_RE.match(l)]
     for i, line in enumerate(lines):
         if line.strip().startswith("<?php"):
             lines.insert(i + 1, STAMP_PREFIX + when)
             return LF.join(lines)
-    return LF.join(lines)  # no <?php line: nothing to stamp after
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*<script(\s[^>]*)?>\s*$", line):
+            lines.insert(i + 1, STAMP_PREFIX + when)
+            return LF.join(lines)
+    lines.insert(0, STAMP_HTML_PREFIX + when + " -->")
+    return LF.join(lines)
+
+
+def find_stamp(text: str | None) -> tuple[int, str] | None:
+    """(1-based line number, stamp line) of the staging marker, or None."""
+    for i, line in enumerate((text or "").replace(CRLF, LF).split(LF), start=1):
+        if STAMP_RE.match(line):
+            return i, line.strip()
+    return None
 
 
 def host_of(s: dict) -> tuple[str, str]:
@@ -559,10 +600,36 @@ def cmd_push(smip: Smip, args) -> int:
             continue
 
         try:
-            b = backup(args, f"{s['id']}{p.suffix}", s.get("script") or "")
             when = datetime.now(timezone.utc).isoformat(timespec="seconds")
             body = stamped(local_text, when) if args.stamp else local_text
+            if args.stamp and not find_stamp(body):
+                # Cannot happen with the current stamped(), but if it ever
+                # does, refuse rather than stage an unstamped body under a
+                # "stamped" report. Silence here is how a stamp went
+                # missing on 2026-09-13.
+                raise RuntimeError("--stamp requested but no place to put the marker; refusing to write")
+            b = backup(args, f"{s['id']}{p.suffix}", s.get("script") or "")
             result = smip.update_script(str(s["id"]), body)
+
+            # VERIFY BY READING BACK. The mutation payload says nothing
+            # about the body, so fetch the script again and compare what
+            # the tenant now holds against what we meant to write.
+            back = smip.script_source(str(s["id"]))
+            back_text = back.get("script") or ""
+            body_ok = normalise(back_text) == normalise(local_text)
+            stamp_back = find_stamp(back_text)
+            stamp_ok = (stamp_back is not None and when in stamp_back[1]) if args.stamp else True
+            if not body_ok or not stamp_ok:
+                failed += 1
+                print("  VERIFY FAILED after write:")
+                if not body_ok:
+                    print("    read-back body does not match the local file")
+                if not stamp_ok:
+                    print("    stamp missing from read-back body" if stamp_back is None
+                          else f"    read-back stamp is stale: {stamp_back[1]}")
+                print(f"  backup of the previous body: {b.name}\n")
+                continue
+
             # Record the SERVER's timestamp: status compares server to server,
             # so a skewed local clock cannot fake a deploy.
             state[str(s["id"])] = {
@@ -570,11 +637,15 @@ def cmd_push(smip: Smip, args) -> int:
                 "file": p.name,
                 "stagedAt": result.get("updatedTimestamp"),
                 "stampedWith": when if args.stamp else None,
+                "stampLine": stamp_back[0] if stamp_back else None,
             }
             save_state(args, state)
             pushed += 1
             staged.append((str(s["id"]), s["displayName"]))
             print(f"  DB UPDATED - NOT YET LIVE (backup {b.name})")
+            print("  verified by read-back: body matches local"
+                  + (f"; stamp on line {stamp_back[0]}: {stamp_back[1]}" if stamp_back
+                     else "; NO STAMP (run with --stamp so the IDE header shows when it was staged)"))
             print(f"  deploy: open and Save -> {smip.ide_url(s['id'])}\n")
         except Exception as exc:  # noqa: BLE001
             failed += 1
@@ -598,10 +669,12 @@ def cmd_status(smip: Smip, args) -> int:
     if not state:
         print("Nothing staged. `push --apply` records what it stages.")
         return 0
-    by_id = {str(s["id"]): s for s in smip.scripts(with_source=False)}
+    # Bodies too: status re-checks that the stamp we staged is still what
+    # the tenant holds, so a later edit or a paste over it is visible here.
+    by_id = {str(s["id"]): s for s in smip.scripts(with_source=True)}
     pending = []
-    print("%-30s %-26s %-26s %s" % ("script", "staged at", "tenant now", "state"))
-    print("-" * 100)
+    print("%-30s %-26s %-26s %-16s %s" % ("script", "staged at", "tenant now", "state", "stamp"))
+    print("-" * 118)
     for sid, rec in sorted(state.items(), key=lambda kv: kv[1]["name"]):
         live = by_id.get(sid)
         if not live:
@@ -611,8 +684,19 @@ def cmd_status(smip: Smip, args) -> int:
         saved = now > (rec.get("stagedAt") or "")
         if not saved:
             pending.append((sid, rec["name"]))
-        print("%-30s %-26s %-26s %s" % (rec["name"], (rec.get("stagedAt") or "")[:26],
-                                        now[:26], "live (inferred)" if saved else "NEEDS IDE SAVE"))
+        found = find_stamp(live.get("script"))
+        if rec.get("stampedWith"):
+            if found and rec["stampedWith"] in found[1]:
+                stamp = f"line {found[0]}, ours"
+            elif found:
+                stamp = f"line {found[0]}, DIFFERENT: {found[1][-25:]}"
+            else:
+                stamp = "MISSING (body replaced?)"
+        else:
+            stamp = f"line {found[0]} (older)" if found else "none (staged without --stamp)"
+        print("%-30s %-26s %-26s %-16s %s" % (rec["name"], (rec.get("stagedAt") or "")[:26],
+                                              now[:26], "live (inferred)" if saved else "NEEDS IDE SAVE",
+                                              stamp))
     if pending:
         print(f"\n{len(pending)} script(s) staged but NOT live. Open each and press Save:")
         for sid, name in pending:
