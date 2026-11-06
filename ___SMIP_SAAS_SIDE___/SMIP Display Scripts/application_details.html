@@ -400,12 +400,13 @@ $user = Factory::getUser();
           : String(inputs.script_name || "").trim();
         if (fileName && !/\.php$/i.test(fileName)) fileName += ".php";
         const parentId = String((aObject && aObject.partOfId) || inputs.parent_id || "").trim();
-        if (!/^\d+$/.test(scriptId) || scriptId === "0" || !nodeId || !fileName || !parentId) return "";
-        const p = new URLSearchParams({
-          option: "com_thinkiq", task: "previewScript",
-          script_name: fileName, script_id: scriptId,
-          parent_id: String(parentId), node_id: nodeId,
-        });
+        if (!/^\d+$/.test(scriptId) || scriptId === "0" || !nodeId || !fileName) return "";
+        // A ROOT node (e.g. External Users, ThinkIQ System) has no parent; the
+        // route is then called without parent_id rather than the link hidden.
+        const params = { option: "com_thinkiq", task: "previewScript",
+                         script_name: fileName, script_id: scriptId, node_id: nodeId };
+        if (parentId) params.parent_id = parentId;
+        const p = new URLSearchParams(params);
         return `/index.php?${p.toString()}`;
       },
 

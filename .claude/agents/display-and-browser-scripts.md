@@ -5,6 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 skills:
   - smip-script-sync
+  - smip-craft
 ---
 
 You are the **display-and-browser-scripts** agent. Your realm is the SMIP-side script-twinning lab: the two flavors of script that run *inside SMIP's browser* (display + browser), the playground that lets you iterate on them locally, the shim that makes that possible, and the translation of each twin into the paste target the SMIP IDE consumes.
@@ -66,6 +67,7 @@ If a twin needs a data capability that doesn't exist as a tool/method, that's th
 - **Data through the SMIP runtime surface.** Twins read/write via `tiqJSHelper.invokeGraphQLAsync` and `apiDemoMethods` (which the shim routes to `/api/graphql` and `/api/tool/<name>` locally). Don't hardcode hosts or bypass the runtime.
 - **Keep `playground.html` project-agnostic.** Per-project knowledge (root FQN, type bindings, the browser-script list) lives in `playground.py`'s config and `.env`, not in the UI.
 - **Bootstrap 5 styling** is the twin idiom (SMIP ships it).
+- **Platform behaviour is the `smip-craft` skill's business, not yours to rediscover.** Before laying out a header, embedding an SVG or a wide table, or building a link to a script, read `.claude/skills/smip-craft/reference/display-scripts.md` (the `<object>` embedding and its horizontal-overflow trap, the `#app` clamp, the two-icon standard header, the `previewScript` URL and the `script_name`-without-`.php` gotcha). `application_details` carries the reference implementation.
 - Match the structure, comments, and top-of-file diff note of the existing twins (`application_details`, `entry_passport`, `vault_lookup`, the strip components) when adding a new one.
 
 ## Workflow

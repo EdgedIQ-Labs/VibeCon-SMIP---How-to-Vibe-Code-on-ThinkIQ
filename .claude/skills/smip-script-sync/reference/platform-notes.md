@@ -53,8 +53,11 @@ onLibrary onType onObject asThing type partOf
 
 - No filename, path, hash or disk timestamp. The filename is **derived**:
   `{relativeName}_{id}.php`.
-- `sourceUpdatedTimestamp` is null on every script; `document` is an inert
+- `sourceUpdatedTimestamp` is null on every script; `document` is
   `{"template":false}`; `editStatus` stays 1. None of them move on IDE Save.
+  `document` and `initialInputs` still have to be set: `createScript` leaves
+  them null, and a null `initialInputs` crashes the IDE's Edit Config dialog
+  (see "Things that bit us").
 - The IDE Save bumps `updatedTimestamp`, the same field `updateScript` bumps.
   So the only GraphQL-side signal is write ordering: record the server's
   `updatedTimestamp` returned by your push; if the tenant later shows a newer
@@ -93,6 +96,56 @@ Verified 2026-09-21 on thermalworks: `script_name` without `.php` routes to a
 blank landing page, and the `std_inputs.script_name` the PHP Context injects
 arrives WITHOUT the extension - so build the name from GraphQL
 (`script(id){relativeName}` + id + `.php`) rather than trusting the context.
+
+## How display scripts are embedded (summary; the craft lives in `smip-craft`)
+
+Layout and rendering behaviour of display scripts is the `smip-craft` skill's
+subject (`.claude/skills/smip-craft/reference/display-scripts.md`). The short
+version stays here because it explains the URL shapes this tool prints.
+
+The Model Explorer pane does not render a display script inline. It renders
+
+    <object data="/index.php?option=com_thinkiq&task=previewScript
+                  &script_name=<relativeName>_<id>.php&script_id=<id>
+                  &parent_id=<node.partOfId>&node_id=<nodeId>
+                  &hideHeader&hideFooter" width="100%" height="...">
+
+so the script is a **separate document** inside the pane, with the platform's
+page wrapper (`body.flex > .page-content > .container-fluid.d-flex > .row >
+main.d-flex.flex-column.col-12 > #app`) and nothing in that chain that pins
+the width to the pane. Consequences, seen repeatedly (2026-09-22 was the third
+time):
+
+- Any content wider than the pane — a graphviz SVG at its natural `pt` size, a
+  table with many columns, a long unbroken string — widens the **whole
+  embedded document**. The pane grows a horizontal scrollbar.
+- Everything right-aligned (`float-end`, `justify-content-end`, `right:0`)
+  then sits at the document's TRUE right edge, off-screen until the user
+  scrolls sideways. It looks as if the wide content "ate" the header icons.
+  The DOM is intact; `getBoundingClientRect().x > innerWidth` is the tell.
+- `#app` is a flex item of `main` (flex column). A flex item's `min-width:
+  auto` means its minimum width is its content's minimum width, so an
+  overflowing child widens `#app` itself, not just the scroll area.
+
+Fix pattern — supply the bucket the wrapper does not:
+
+```html
+<style>#graph svg { max-width: 100%; height: auto; display: block; }</style>
+<div id="app" style="position:relative; max-width:100%; overflow-x:hidden;">
+  ...
+  <div id="graph" style="max-width:100%; overflow-x:auto;"></div>   <!-- or .table-responsive around tables -->
+```
+
+`overflow-x` other than `visible` also resets the flex item's `min-width:auto`
+to 0, which is what actually stops `#app` growing. SVGs that carry a `viewBox`
+(graphviz output does) scale down proportionally under `max-width:100%`.
+Start every new display script with the `#app` clamp.
+
+Note also that `parent_id` is optional to the route (a root node such as
+External Users renders full-page without it), and that the full-page view
+(no `hideHeader`) gets the site banner, so do not use `position:fixed` for
+header affordances — `position:absolute` inside the clamped `#app` works in
+both views.
 
 ## What the PHP side exposes
 
@@ -182,3 +235,12 @@ and it ships as a library export JSON like the vault and the VibeCon JS SDK.
   Back up the deployed body before every write.
 - Base ThinkIQ libraries are `locked: true`; you cannot attach a script to a
   base type. Derive a sub-type in your own library.
+- A script created with `createScript` gets `initialInputs: null` and
+  `document: null` unless you pass them; the IDE always sets both. The Edit
+  Config dialog then hangs or throws `Cannot read properties of null (reading
+  'start_timestamp')` and shows blank fields. Seen 2026-10-12 and again on
+  trimtabs on 2026-11-06 with script 239107, where `owner` was `TT_Worker`.
+  Set `initialInputs`, `document`, `run: false` and
+  `maxAcceptableRunSecs: 50` on create, or patch them in right after. The
+  values and details are in `smip-craft` reference/graphql-behaviour.md, under
+  Scripts.
