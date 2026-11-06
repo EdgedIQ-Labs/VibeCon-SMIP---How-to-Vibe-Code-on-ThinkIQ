@@ -107,8 +107,8 @@ directly to a base-library type. The three-beat workaround:
    script fires when they're opened.
 
 Deleting a type cascades — instances typed as it get hard-deleted, no
-prompt, no soft-delete. If you keep a second SMIP tenant (TrimTabs, a
-sandbox, anything stable) as a reference mirror, you can recover by
+prompt, no soft-delete. If you keep a second SMIP tenant (a sandbox,
+a staging tenant, anything stable) as a reference mirror, you can recover by
 reading the values off and recreating. SMIP doesn't give you
 point-in-time recovery at the modeling layer, so an intact peer tenant
 *is* the recovery surface.

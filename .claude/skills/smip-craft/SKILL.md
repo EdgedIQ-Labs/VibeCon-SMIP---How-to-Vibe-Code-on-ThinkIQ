@@ -47,7 +47,9 @@ Two references, read the one your task touches:
 ## Adding to this skill
 
 When a tenant surprises you and the fix was not in a project's code, the
-lesson goes here, in the matching reference, with the date and tenant it was
-observed on. Fix the template copy first (`Automation Template/.claude/skills/
+lesson goes here, in the matching reference, with the date it was observed.
+This repo is public: describe the tenant generically ("a production tenant",
+"a second tenant"), never by customer or project name, hostname, API-user
+name, or script id. Fix the template copy first (`Automation Template/.claude/skills/
 smip-craft/`), then copy the folder into the project. Deploying scripts is a
 different skill: `smip-script-sync`.

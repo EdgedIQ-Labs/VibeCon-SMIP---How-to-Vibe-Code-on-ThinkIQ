@@ -97,7 +97,7 @@ apiDemoTools.push(
         key:         "updateObjectViaJs",
         name:        "UpdateObjectViaJs",
         category:    "Mutation (JS)",
-        description: "Update an object's properties by id. DESTRUCTIVE — writes to the SoR. id is a digits-only object node id. patch is a JS object with one or more ObjectPatch fields: importance (int), displayName (string), description (string). Pass `null` for a field to clear it; omit a field to skip it. Common at TAF Carbon for setting `importance: -<yymmdd>` so newest runs sort to the top of instance lists.",
+        description: "Update an object's properties by id. DESTRUCTIVE — writes to the SoR. id is a digits-only object node id. patch is a JS object with one or more ObjectPatch fields: importance (int), displayName (string), description (string). Pass `null` for a field to clear it; omit a field to skip it. A common use is setting `importance: -<yymmdd>` so newest runs sort to the top of instance lists.",
         via:         "js",
         handler:     "updateObject",
         inputs: [

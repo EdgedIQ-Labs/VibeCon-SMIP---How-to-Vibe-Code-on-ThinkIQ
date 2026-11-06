@@ -1,6 +1,6 @@
 # Display scripts: how SMIP renders them, and what that does to your layout
 
-Observed on thermalworks.thinkiq.net, 2026-09-21/22, and bitten more than
+Observed on a production tenant, 2026-09-21/22, and bitten more than
 once before that. Read before laying out a header, a wide table, or an SVG.
 
 ## The pane is an `<object>`, not an inline render

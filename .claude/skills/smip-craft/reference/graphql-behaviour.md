@@ -7,7 +7,7 @@ each earned on a live tenant. Dates are when they were observed.
 ## Cost and batching
 
 - A read costs roughly 0.3 to 0.5 s; a mutation roughly 2.7 s on a busy tenant
-  (thermalworks, 2026-09). A per-record loop of four writes puts 1,700 records
+  (a production tenant, 2026-09). A per-record loop of four writes puts 1,700 records
   on a five-hour path.
 - **Aliased mutations are the whole performance story.** One document holding
   `a0: updateAttribute(input:{...}) {clientMutationId} a1: ...` applies fifty
@@ -91,7 +91,7 @@ plain attributes and 25 where each alias fans out through
   `smip-script-sync` skill for the deploy discipline.
 - **`createScript` does not set the defaults the UI sets**, and the IDE's
   Edit Config dialog breaks without them. Found 2026-10-12, and again on
-  trimtabs on 2026-11-06 (script 239107 "Gross Gas Model").
+  a second tenant on 2026-11-06.
   - A GraphQL-created script gets `document: null` and `initialInputs: null`.
     The 2026-10-12 one also got `run: true`, `useOutputsFromLastRun: true`
     and `maxAcceptableRunSecs: 0`.
@@ -100,7 +100,7 @@ plain attributes and 25 where each alias fans out through
     shows `TypeError: Cannot read properties of null (reading
     'start_timestamp')` from `tiq.components.min.js`. That is the null
     `initialInputs`. A null `document` was not tested on its own, so set both.
-  - The giveaway is `owner` set to the API user (e.g. `TT_Worker`) instead of
+  - The giveaway is `owner` set to the API user instead of
     a person. A GraphQL-made script has an API-user owner, and that owner
     alone does not block editing. When a script's dialog misbehaves and the
     owner is the API user, check these fields first.
@@ -111,7 +111,7 @@ plain attributes and 25 where each alias fans out through
     `run: false`, `maxAcceptableRunSecs: 50`, all copied from a UI-made display
     script. Send the JSON fields as JSON-encoded **strings**, the form the
     tenant stores and returns. `useOutputsFromLastRun` can be either value;
-    UI-made display scripts on trimtabs carry both. Every UI-made display
+    UI-made display scripts on that tenant carry both. Every UI-made display
     script has `run: false`. To repair an existing script, send the same
     patch, then open the dialog and Save.
 - `createScript` returned HTTP 400 when the input carried `relativeName` and a

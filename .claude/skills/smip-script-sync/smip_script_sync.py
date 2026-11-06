@@ -7,8 +7,8 @@ READ THIS FIRST
 ---------------
 **A GraphQL write does not deploy a script.** Platform scripts EXECUTE as
 files on disk in the Joomla host (`.../scripts/{relativeName}_{id}.php`);
-`updateScript` only writes the Postgres row. Verified 2026-09-01 on
-thermalworks.thinkiq.net: after a push the live page kept rendering the old
+`updateScript` only writes the Postgres row. Verified 2026-09-01 on a
+production tenant: after a push the live page kept rendering the old
 behaviour until the script was opened in the platform IDE and SAVED. The IDE
 save is what manifests the row to disk.
 

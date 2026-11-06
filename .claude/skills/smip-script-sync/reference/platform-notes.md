@@ -1,7 +1,7 @@
 # SMIP platform notes: scripts, the database, and the disk
 
 What an agent needs to know about how SMIP (ThinkIQ) stores and runs scripts,
-gathered from live experiments on `thermalworks.thinkiq.net` (2026-09-01 and
+gathered from live experiments on a production tenant (2026-09-01 and
 2026-09-13) and from reading the ThinkIQ-Labs Library-Vault export (2024-03,
 schema 4.8.11). Tenant-agnostic unless marked.
 
@@ -92,7 +92,7 @@ display-script links open, and the standard header's "open in tab" link):
         &parent_id=<node.partOfId>                   <- the NODE's parent object, not a type
         &node_id=<nodeId>
 
-Verified 2026-09-21 on thermalworks: `script_name` without `.php` routes to a
+Verified 2026-09-21 on a production tenant: `script_name` without `.php` routes to a
 blank landing page, and the `std_inputs.script_name` the PHP Context injects
 arrives WITHOUT the extension - so build the name from GraphQL
 (`script(id){relativeName}` + id + `.php`) rather than trusting the context.
@@ -239,7 +239,7 @@ and it ships as a library export JSON like the vault and the VibeCon JS SDK.
   `document: null` unless you pass them; the IDE always sets both. The Edit
   Config dialog then hangs or throws `Cannot read properties of null (reading
   'start_timestamp')` and shows blank fields. Seen 2026-10-12 and again on
-  trimtabs on 2026-11-06 with script 239107, where `owner` was `TT_Worker`.
+  a second tenant on 2026-11-06, where `owner` was the API user.
   Set `initialInputs`, `document`, `run: false` and
   `maxAcceptableRunSecs: 50` on create, or patch them in right after. The
   values and details are in `smip-craft` reference/graphql-behaviour.md, under
