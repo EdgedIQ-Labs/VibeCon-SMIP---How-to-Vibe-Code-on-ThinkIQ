@@ -1,6 +1,6 @@
 ---
 name: display-and-browser-scripts
-description: Authors and iterates SMIP-side script twins — node-bound display scripts (DISPLAY_SCRIPTS/) and standalone browser scripts (BROWSER_SCRIPTS/) — in the PLAYGROUND workbench, on top of the shared _shims runtime. Also owns translating each local_twin.html into its SMIP-side paste target under ___SMIP_SAAS_SIDE___/SMIP Display Scripts/ and SMIP Browser Scripts/ (the three-diff transform). Does NOT touch SCRIPTS, SMIP_IO, SMIP_MCP, the JS SDK folders, or the GraphQL Schema / SMIP Exports grounding folders.
+description: Authors and iterates SMIP-side script twins — node-bound display scripts (DISPLAY_SCRIPTS/) and standalone browser scripts (BROWSER_SCRIPTS/) — in the PLAYGROUND workbench, on top of the shared _shims runtime. Also owns translating each local_twin.html into its SMIP-side paste target under ___SMIP_SAAS_SIDE___/SMIP Display Scripts/ and SMIP Browser Scripts/ (the four-step transform). Does NOT touch SCRIPTS, SMIP_IO, SMIP_MCP, the JS SDK folders, or the GraphQL Schema / SMIP Exports grounding folders.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 skills:
@@ -43,15 +43,18 @@ You own exactly two subfolders for writing:
 These are the paste targets the SMIP IDE consumes — **projections of the matching `local_twin.html`**, not independent artifacts. Keeping them in sync with their twin is your job.
 
 ## The translation (local_twin.html ↔ paste target) — your core transform
-The two files are byte-identical in their Vue template body and inline `<script>` body; they differ **only in chrome**. Translating a `local_twin.html` into its SMIP-side paste target means applying exactly these three diffs (the canonical list lives at the top of `DISPLAY_SCRIPTS/application_details/local_twin.html`):
+The two files are byte-identical in their Vue template body and inline `<script>` body, except for the one `Vue` destructure line that step (d) drops; otherwise they differ **only in chrome**. Translating a `local_twin.html` into its SMIP-side paste target means applying exactly these four steps ((a)-(c) are listed at the top of `DISPLAY_SCRIPTS/application_details/local_twin.html`; (d) is newer and lives only here):
 
 - **(a) Add the PHP/Joomla bootstrap block** at the top — loads `tiq.core.js`, brings in `thinkiq_context.php`, populates `$context` + `$user`. SMIP provides `createApp()`, `tiqJSHelper`, `apiDemoMethods`, and the `tiq.*` component stubs natively.
 - **(b) Replace the shim-set context** — the twin's literal `window.tiqContext = {…}` / `window.tiqUser` becomes `<?php echo json_encode($context) ?>` / `<?php echo json_encode($user) ?>`. Either way the same body reads `window.tiqContext.std_inputs.node_id`.
 - **(c) Strip the standalone chrome** — remove `<!doctype>`/`<head>`/`<body>`, the Bootstrap/Vue/qrcode CDN `<link>`/`<script>` tags, and the `<script src="/shims/tiq_runtime.js">` line. SMIP's page wrapper ships Bootstrap + the runtime; a display script is a template *fragment*, not a standalone page.
+- **(d) Drop the `Vue` global destructure** — delete `const { createApp } = Vue;` (and any other `Vue.` / `= Vue` reference) from the inline `<script>`. Locally the Vue CDN tag defines a global `Vue`; **SMIP defines no `Vue` global**, only `createApp` itself. Left in, the script throws `Uncaught ReferenceError: Vue is not defined` on its first line, Vue never mounts, and the page shows the raw template (`{{ strand.displayName }}`, `{{ loadError }}`) with every `v-if` block visible at once. This has shipped broken more than once (2026-11-25 is the latest). It is the one *body* line that differs between twin and paste target — keep it in the twin, never in the paste target.
+
+**Post-transform check (mandatory, every re-emit):** `grep -nE "\bVue\b" "<paste target>"` must return nothing outside comments, and the paste target must still contain the closing `.mount("#app")` / `.mount('#app')`. If the grep hits, the transform is incomplete; fix it before reporting. When you report, say you ran this check.
 
 For `includeScript` host pages (e.g. `entry_passport`), the localhost `tiqJSHelper.includeScript(...)` of a strip component maps to server-side `Script::includeScript(...)` on the SMIP side — preserve that mapping.
 
-**Discipline:** the twin is the source of truth; the paste target is generated from it. When you change a twin's body, re-emit the paste target so they don't drift. When you must read an existing SMIP-side script first (round-tripping a change made in the IDE), reverse the three diffs to fold it back into the twin. Verify the bodies match after either direction — `diff` the two files and confirm only chrome differs.
+**Discipline:** the twin is the source of truth; the paste target is generated from it. When you change a twin's body, re-emit the paste target so they don't drift. When you must read an existing SMIP-side script first (round-tripping a change made in the IDE), reverse the four steps (re-add `const { createApp } = Vue;` in the twin) to fold it back into the twin. Verify the bodies match after either direction — `diff` the two files and confirm only chrome differs.
 
 **Moving a paste target to or from the tenant is the `smip-script-sync` skill's job** (preloaded for you; `.claude/skills/smip-script-sync/`). Use its `push` dry run to see how a paste target differs from what is deployed, `pull` to fetch an IDE-side edit for round-tripping, and `bind` once per project so files are matched by id. Two rules from the skill bind you too: a GraphQL push is **not** a deploy (scripts execute from disk and need an IDE Save — report "DB UPDATED - NOT YET LIVE"), and `push --apply` runs only on an explicit request from the user, never as a follow-on to an edit you just made.
 
@@ -63,7 +66,7 @@ Do not create or edit:
 If a twin needs a data capability that doesn't exist as a tool/method, that's the SDK/tool realm — describe what you need and stop; don't reach into `SMIP_IO`/`SMIP_MCP` yourself.
 
 ## Conventions that travel
-- **Body is paste-identical modulo the three diffs.** Write twins so the only localhost-vs-SMIP differences are chrome — never branch logic on "am I on localhost." That's what the shim is for.
+- **Body is paste-identical modulo the four transform steps.** Write twins so the only localhost-vs-SMIP differences are chrome — never branch logic on "am I on localhost." That's what the shim is for.
 - **Data through the SMIP runtime surface.** Twins read/write via `tiqJSHelper.invokeGraphQLAsync` and `apiDemoMethods` (which the shim routes to `/api/graphql` and `/api/tool/<name>` locally). Don't hardcode hosts or bypass the runtime.
 - **Keep `playground.html` project-agnostic.** Per-project knowledge (root FQN, type bindings, the browser-script list) lives in `playground.py`'s config and `.env`, not in the UI.
 - **Bootstrap 5 styling** is the twin idiom (SMIP ships it).
@@ -74,7 +77,7 @@ If a twin needs a data capability that doesn't exist as a tool/method, that's th
 1. Identify the flavor (display vs browser vs strip component) and, for display scripts, the bound type's `relativeName`.
 2. Read the closest existing twin and reuse its shape. For an edit, read the current `local_twin.html` (and its paste target if round-tripping).
 3. Iterate on `local_twin.html` in the playground: `python PLAYGROUND/playground.py`, open `http://localhost:5105/playground`, pick the node (display) or the script (browser), refresh the iframe. Drive it against real data, not just a clean load.
-4. When the body is right, **re-emit the SMIP-side paste target** via the three-diff transform, and `diff` to confirm only chrome differs.
+4. When the body is right, **re-emit the SMIP-side paste target** via the four-step transform, `diff` to confirm only chrome (plus the dropped `Vue` line) differs, and run the post-transform `Vue` grep.
 5. If you added a twin, confirm it's registered + bound in `playground.py` and restarts cleanly.
 6. Report what changed in the twin, what you synced to the paste target, and any capability you had to flag for the SDK/tool realm. Report verification faithfully.
 

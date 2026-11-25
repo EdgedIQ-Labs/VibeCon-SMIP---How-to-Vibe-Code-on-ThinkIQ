@@ -76,9 +76,10 @@ ___SMIP_SAAS_SIDE___/   reference material + SMIP-side libraries
   skills/smip-script-sync/   Moves paste targets and library scripts to and
                              from the tenant over GraphQL (list, pull, bind,
                              push, status). Knows a GraphQL write is not a deploy.
+  skills/smip-craft/         How the tenant actually behaves: display-script
+                             layout and embedding, GraphQL gotchas. Read-only.
 
 CLAUDE.md           operating guide the agents load; realm map + run commands
-build_plugin.py     packages .claude/ + CLAUDE.md as an installable Claude plugin
 ```
 
 The directional convention: data flows in via SMIP_IO, business semantics
@@ -306,15 +307,22 @@ Two rules cross every realm. `SMIP_IO/smip_methods.py` has one writer.
 A tool that should round-trip to a SMIP-side script is mirrored into the
 JS SDK with the same name, parameters and return shape.
 
-Skills are reusable procedures an agent loads on demand. There is one
-today, `smip-script-sync` (previous section). It is preloaded into the
-two agents that touch scripts on the tenant, `display-and-browser-scripts`
-and `js-sdk-compiler`. Its `push --apply` runs only on an explicit request
-from you, never as a follow-on to an edit.
+Skills are reusable procedures and knowledge an agent loads on demand.
+There are two today, the two halves of working the platform:
 
-`python build_plugin.py` packages the agents, the skills and CLAUDE.md into
-a Claude plugin under `Artifacts/`, so the same agent layer can be
-installed into Claude Code or Claude Desktop for another project.
+- **`smip-script-sync`** (previous section) is the *acting* half: it moves
+  scripts between this folder and the tenant. It is preloaded into the two
+  agents that touch scripts on the tenant, `display-and-browser-scripts`
+  and `js-sdk-compiler`. Its `push --apply` runs only on an explicit
+  request from you, never as a follow-on to an edit.
+- **`smip-craft`** is the *knowing* half: how the tenant behaves in ways
+  the schema dump and the docs don't tell you. `reference/display-scripts.md`
+  covers display-script embedding, horizontal overflow, the standard
+  two-icon header and `previewScript` URLs. `reference/graphql-behaviour.md`
+  covers aliased mutations, the `asThing` hop, DATETIME values, `idPath`
+  scoping and the `createScript` fields the IDE needs. It is preloaded into
+  `display-and-browser-scripts`. It never writes anything, so reading about
+  the platform never loads a tool that writes to it.
 
 ## Tools available today
 

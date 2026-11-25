@@ -303,4 +303,4 @@ back the time you put into it.) From here:
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — what's where and why. Reference
   for when you need to understand a piece of the wiring, including the
   agent layer under `.claude/` (four realm subagents and the
-  `smip-script-sync` skill) if you work on the repo with Claude Code.
+  `smip-script-sync` and `smip-craft` skills) if you work on the repo with Claude Code.

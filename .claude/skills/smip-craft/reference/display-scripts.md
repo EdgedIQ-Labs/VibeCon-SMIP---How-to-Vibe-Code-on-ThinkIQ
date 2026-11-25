@@ -169,6 +169,22 @@ the rewrite happens only when the platform serves the page.
 - `createApp`, `tiqJSHelper`, `apiDemoMethods` and the `tiq.*` component stubs
   are globals on the platform; the local twin gets them from
   `_shims/tiq_runtime.js`.
+- **There is no `Vue` global on the platform.** Only `createApp` is exposed.
+  A body that starts `const { createApp } = Vue;`, the usual idiom with a
+  Vue CDN tag and so the natural thing a local twin contains, throws
+  `Uncaught ReferenceError: Vue is not defined`. Vue never mounts, and the
+  page shows the raw template: literal `{{ … }}` mustaches, with every
+  `v-if` / `v-else` branch visible at once (loading text, error box and
+  empty-state all together). Call `createApp({...}).mount('#app')` directly
+  on the platform. This has recurred on more than one tenant; last seen
+  2026-11-25. Grep every paste target for `\bVue\b` before staging it.
+- **The template is in-DOM, so the HTML parser lowercases attribute names
+  before Vue sees them.** `v-bind:viewBox` arrives as `viewbox`, the SVG
+  ignores it, and the drawing doesn't scale (it renders at natural size or
+  clips). Use `v-bind:view-box.camel="…"`; the same applies to any
+  camelCase SVG attribute you bind (`preserveAspectRatio`, `markerWidth`, …).
+  A static `viewBox="0 0 W H"` is fine, since the browser's own SVG parser
+  keeps its case. Observed 2026-11-25.
 - The script runs from **disk**, `<relativeName>_<id>.php`, rewritten only by
   an IDE Save. A GraphQL `updateScript` changes the row, not the page. See the
   `smip-script-sync` skill.

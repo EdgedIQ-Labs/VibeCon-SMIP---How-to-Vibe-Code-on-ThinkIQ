@@ -74,8 +74,9 @@ is where you'd start.
   Reference for the tool registry mechanics, the script-flavor
   conventions, and the design choices that thread through the codebase.
   Also covers the agent layer under `.claude/`: four realm subagents,
-  one per folder group, and the `smip-script-sync` skill that moves
-  scripts to and from the tenant.
+  one per folder group, the `smip-script-sync` skill that moves
+  scripts to and from the tenant, and the `smip-craft` skill that records
+  how the platform actually behaves.
 
 ## Working with an agent
 
@@ -83,12 +84,13 @@ The repo ships with a Claude Code agent layer under `.claude/`. Four
 subagents each own one folder group (tools/SDK, `SCRIPTS/`, the twins
 and playground, the JS SDK) and stay out of the others'; `CLAUDE.md` is
 the operating guide they load, with the realm map and the write-safety
-rules. One skill, `smip-script-sync`, lists, pulls, diffs and stages
+rules. Two skills ship with it. `smip-script-sync` lists, pulls, diffs and stages
 platform scripts against the tenant. It knows that a GraphQL write is not
 a deploy: a script runs from a file on disk that only an IDE **Save**
 rewrites, so the skill reports "DB UPDATED - NOT YET LIVE" and hands you
-the IDE URL. Everything in the repo also works with no agent at all.
-`python build_plugin.py` packages the layer as a Claude plugin.
+the IDE URL. `smip-craft` is read-only platform knowledge (display-script
+layout and embedding, GraphQL gotchas) that agents read before writing
+against the tenant. Everything in the repo also works with no agent at all.
 
 ## A note on adding a SMIP display script
 

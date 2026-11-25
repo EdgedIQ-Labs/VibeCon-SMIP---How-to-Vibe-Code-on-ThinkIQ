@@ -24,7 +24,7 @@ Two references, read the one your task touches:
 | write or restyle a display script, add a header, embed an SVG or wide table, build a link to a script | [reference/display-scripts.md](reference/display-scripts.md) |
 | write a GraphQL query or mutation, batch writes, read records under an account, filter by subtree, write a datetime | [reference/graphql-behaviour.md](reference/graphql-behaviour.md) |
 
-## The six things people relearn most often
+## The seven things people relearn most often
 
 1. **A display script is a separate document inside an `<object>`**, with no
    wrapper pinning its width. Wide content widens the document and pushes
@@ -43,6 +43,11 @@ Two references, read the one your task touches:
    the script cannot be saved from the UI. If `owner` is the API user, the
    script was created over GraphQL, so check these fields first. Values are in
    [graphql-behaviour.md](reference/graphql-behaviour.md#scripts).
+7. **There is no `Vue` global on the platform, only `createApp`.**
+   `const { createApp } = Vue;` from a local twin throws `Vue is not
+   defined` and the page shows raw `{{ }}` mustaches. Drop that line from
+   every paste target. Details in
+   [display-scripts.md](reference/display-scripts.md#runtime-facts-that-shape-twins).
 
 ## Adding to this skill
 
